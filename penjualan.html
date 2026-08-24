@@ -12,7 +12,7 @@
 </style>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, serverTimestamp, query, orderBy, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, serverTimestamp, query, orderBy, where, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDvsXZJLqGdCfVLILx6clV4ANUpYO-aHIw",
@@ -68,9 +68,20 @@ function renderCabangs(){
     $("md-cabang").innerHTML = ops;
     $("sh-cabang").innerHTML = ops;
 }
-window.editCabang = async (id, oldName) => {
-    const baru = prompt("Edit nama cabang:", oldName);
-    if(baru && baru.trim()) await updateDoc(doc(db,"cabang",id), { nama: baru.trim() });
+window.editCabang = function(id, oldName) {
+    $("modal-title").textContent = "Edit Cabang";
+    $("modal-body").innerHTML = `
+        <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Cabang</label>
+        <input type="text" id="modal-input" value="${oldName}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" autofocus>
+    `;
+    $("modal-action").onclick = async () => {
+        const baru = $("modal-input").value.trim();
+        if(baru) {
+            await updateDoc(doc(db,"cabang",id), { nama: baru });
+            closeModal();
+        }
+    };
+    openModal();
 };
 window.hapusCabang = async (id) => {
     if(!confirm("Hapus cabang ini?")) return;
@@ -103,13 +114,38 @@ function renderProduks(){
         </tr>`).join("");
 }
 
-window.editProduk = async (id) => {
+window.editProduk = function(id) {
     const p = produks.find(x => x.id === id);
     if(!p) return;
-    const nama = prompt("Nama produk:", p.nama); if(!nama) return;
-    const harga = parseInt(prompt("Harga jual:", p.hargaJual))||0;
-    const modal = parseInt(prompt("Modal per pcs:", p.modalPerPcs))||0;
-    await updateDoc(doc(db,"produk",id), { nama, hargaJual:harga, modalPerPcs:modal });
+    $("modal-title").textContent = "Edit Produk";
+    $("modal-body").innerHTML = `
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Produk</label>
+                <input type="text" id="modal-nama" value="${p.nama}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual</label>
+                    <input type="number" id="modal-harga" value="${p.hargaJual}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs</label>
+                    <input type="number" id="modal-modal" value="${p.modalPerPcs}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                </div>
+            </div>
+        </div>
+    `;
+    $("modal-action").onclick = async () => {
+        const nama = $("modal-nama").value.trim();
+        const harga = parseInt($("modal-harga").value)||0;
+        const modalVal = parseInt($("modal-modal").value)||0;
+        if(nama) {
+            await updateDoc(doc(db,"produk",id), { nama, hargaJual:harga, modalPerPcs:modalVal });
+            closeModal();
+        }
+    };
+    openModal();
 };
 window.hapusProduk = async (id) => {
     if(!confirm("Hapus produk ini? Semua stok harian dan transaksi lama tetap ada.")) return;
@@ -587,5 +623,39 @@ showTab("transaksi");
         </div>
     </div>
 </main>
+
+<!-- Custom Modal -->
+<div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-auto transform transition-all">
+        <div class="p-4 border-b border-gray-100">
+            <h3 id="modal-title" class="font-bold text-amber-900 text-lg">Edit</h3>
+        </div>
+        <div id="modal-body" class="p-4"></div>
+        <div class="p-4 flex gap-2 border-t border-gray-100">
+            <button onclick="closeModal()" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition">Batal</button>
+            <button id="modal-action" class="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openModal() { $("custom-modal").classList.remove("hidden"); }
+function closeModal() { $("custom-modal").classList.add("hidden"); }
+$("custom-modal").addEventListener("click", e => { if(e.target === $("custom-modal")) closeModal(); });
+</script>
+
+
+<!-- Toast Notification -->
+<div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-lg text-sm font-medium z-50 hidden transition-opacity duration-300"></div>
+
+<script>
+function showToast(msg, type="success") {
+    const t = $("toast");
+    t.textContent = msg;
+    t.className = `fixed bottom-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg text-sm font-medium z-50 transition-opacity duration-300 ${type==="error"?"bg-red-600":"bg-gray-900"} text-white`;
+    t.classList.remove("hidden");
+    setTimeout(() => { t.classList.add("hidden"); }, 3000);
+}
+</script>
 </body>
 </html>
