@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coffee Hawa - Report</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, getDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const $ = id => document.getElementById(id);
+const fmt = n => "Rp " + (n||0).toLocaleString("id-ID");
+const fmtDate = t => {
+    if(!t) return "-";
+    if(typeof t === "string") return new Date(t).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
+    if(t.toDate) return t.toDate().toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
+    return "-";
+};
+
+let allTransaksi = [], allModal = [], allStokHarian = [], cabangs = [];
+let currentTab = "penjualan";
+
+function getFilteredTransaksi(){
+    const cabang = $("filter-cabang").value;
+    const dari = $("filter-dari").value;
+    const sampai = $("filter-sampai").value;
+    const dariDate = dari ? new Date(dari) : null;
+    const sampaiDate = sampai ? new Date(sampai) : null;
+    if(sampaiDate) sampaiDate.setHours(23,59,59);
+    return allTransaksi.filter(t => {
+        if(cabang !== "all" && t.cabang !== cabang) return false;
+        const td = t.tanggal ? new Date(t.tanggal) : null;
+        if(dariDate && td < dariDate) return false;
+        if(sampaiDate && td > sampaiDate) return false;
+        return true;
+    });
+}
+
+function getFilteredModal(){
+    const cabang = $("filter-cabang").value;
+    const dari = $("filter-dari").value;
+    const sampai = $("filter-sampai").value;
+    const dariDate = dari ? new Date(dari) : null;
+    const sampaiDate = sampai ? new Date(sampai) : null;
+    if(sampaiDate) sampaiDate.setHours(23,59,59);
+    return allModal.filter(m => {
+        if(cabang !== "all" && m.cabang !== cabang) return false;
+        const md = m.tanggal ? new Date(m.tanggal) : null;
+        if(dariDate && md < dariDate) return false;
+        if(sampaiDate && md > sampaiDate) return false;
+        return true;
+    });
+}
+
+function getFilteredStok(){
+    const cabang = $("filter-cabang").value;
+    const dari = $("filter-dari").value;
+    const sampai = $("filter-sampai").value;
+    const dariDate = dari ? new Date(dari) : null;
+    const sampaiDate = sampai ? new Date(sampai) : null;
+    if(sampaiDate) sampaiDate.setHours(23,59,59);
+    return allStokHarian.filter(s => {
+        if(cabang !== "all" && s.cabang !== cabang) return false;
+        const sd = s.tanggal ? new Date(s.tanggal) : null;
+        if(dariDate && sd < dariDate) return false;
+        if(sampaiDate && sd > sampaiDate) return false;
+        return true;
+    }).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+}
+
+function renderPenjualan(){
+    const ft = getFilteredTransaksi();
+    const tbody = $("tbody-penjualan");
+    const tfoot = $("tfoot-penjualan");
+    if(!ft.length){ tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-gray-400">Tidak ada data transaksi</td></tr>`; tfoot.innerHTML=""; return; }
+    let totJual=0, totModal=0;
+    tbody.innerHTML = ft.map(t => {
+        totJual += t.totalPenjualan||0; totModal += t.totalModal||0;
+        const itemNames = (t.items||[]).map(i=>i.nama).join(", ");
+        const badge = t.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm">${fmtDate(t.tanggal)}</td>
+            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${t.cabang}</span></td>
+            <td class="px-4 py-3 text-sm text-gray-700">${itemNames||"-"}</td>
+            <td class="px-4 py-3 text-sm text-center">${(t.items||[]).reduce((a,i)=>a+(i.qty||0),0)}</td>
+            <td class="px-4 py-3 text-sm text-right font-semibold">${fmt(t.totalPenjualan)}</td>
+            <td class="px-4 py-3 text-sm text-right text-red-500">${fmt(t.totalModal)}</td>
+            <td class="px-4 py-3 text-sm text-right font-bold text-green-600">${fmt((t.totalPenjualan||0)-(t.totalModal||0))}</td>
+            <td class="px-4 py-3 text-sm text-center">
+                <button onclick="hapusTransaksi('${t.id}')" class="text-red-500 hover:text-red-700" title="Hapus transaksi"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`;
+    }).join("");
+    tfoot.innerHTML = `<tr class="bg-amber-50 font-bold text-amber-900">
+        <td colspan="4" class="px-4 py-3 text-right">TOTAL</td>
+        <td class="px-4 py-3 text-right">${fmt(totJual)}</td>
+        <td class="px-4 py-3 text-right text-red-600">${fmt(totModal)}</td>
+        <td class="px-4 py-3 text-right text-green-700">${fmt(totJual-totModal)}</td>
+        <td></td>
+    </tr>`;
+}
+
+function renderStokHarian(){
+    const fs = getFilteredStok();
+    const tbody = $("tbody-stok");
+    const tfoot = $("tfoot-stok");
+    if(!fs.length){ tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400">Tidak ada data stok harian</td></tr>`; tfoot.innerHTML=""; return; }
+    let totAwal=0, totJual=0, totSisa=0, totTidakLaku=0;
+    tbody.innerHTML = fs.map(s => {
+        totAwal += s.stokAwal||0; totJual += s.terjual||0; totSisa += s.sisa||0;
+        const tidakLaku = (s.sisa||0) > 0 ? (s.sisa||0) : 0;
+        totTidakLaku += tidakLaku;
+        const badge = s.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        const sisaClass = (s.sisa||0) <= 3 ? "text-red-600 font-bold" : "text-gray-700";
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm">${fmtDate(s.tanggal)}</td>
+            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${s.cabang}</span></td>
+            <td class="px-4 py-3 text-sm font-medium text-gray-800">${s.nama}</td>
+            <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.stokAwal||0}</td>
+            <td class="px-4 py-3 text-sm text-center font-semibold text-green-600">${s.terjual||0}</td>
+            <td class="px-4 py-3 text-sm text-center font-bold ${sisaClass}">${s.sisa||0}</td>
+            <td class="px-4 py-3 text-sm text-center text-gray-500">${tidakLaku}</td>
+        </tr>`;
+    }).join("");
+    tfoot.innerHTML = `<tr class="bg-amber-50 font-bold text-amber-900">
+        <td colspan="3" class="px-4 py-3 text-right">TOTAL</td>
+        <td class="px-4 py-3 text-center">${totAwal}</td>
+        <td class="px-4 py-3 text-center text-green-700">${totJual}</td>
+        <td class="px-4 py-3 text-center">${totSisa}</td>
+        <td class="px-4 py-3 text-center text-gray-600">${totTidakLaku}</td>
+    </tr>`;
+}
+
+function renderModal(){
+    const fm = getFilteredModal();
+    const tbody = $("tbody-modal");
+    const tfoot = $("tfoot-modal");
+    if(!fm.length){ tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">Tidak ada data modal/pengeluaran</td></tr>`; tfoot.innerHTML=""; return; }
+    let tot=0;
+    tbody.innerHTML = fm.map(m => {
+        tot += m.jumlah||0;
+        const badge = m.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm">${fmtDate(m.tanggal)}</td>
+            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${m.cabang}</span></td>
+            <td class="px-4 py-3 text-sm font-medium text-gray-700">${m.jenis}</td>
+            <td class="px-4 py-3 text-sm text-right font-bold text-red-500">${fmt(m.jumlah)}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${m.keterangan||"-"}</td>
+            <td class="px-4 py-3 text-sm text-center">
+                <button onclick="hapusModal('${m.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`;
+    }).join("");
+    tfoot.innerHTML = `<tr class="bg-red-50 font-bold text-red-900">
+        <td colspan="3" class="px-4 py-3 text-right">TOTAL PENGELUARAN</td>
+        <td class="px-4 py-3 text-right">${fmt(tot)}</td>
+        <td colspan="2"></td>
+    </tr>`;
+}
+
+function render(){
+    $("table-penjualan").classList.add("hidden");
+    $("table-stok").classList.add("hidden");
+    $("table-modal").classList.add("hidden");
+    $("tab-btn-penjualan").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+    $("tab-btn-stok").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+    $("tab-btn-modal").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+
+    if(currentTab==="penjualan"){
+        renderPenjualan();
+        $("table-penjualan").classList.remove("hidden");
+        $("tab-btn-penjualan").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
+    } else if(currentTab==="stok"){
+        renderStokHarian();
+        $("table-stok").classList.remove("hidden");
+        $("tab-btn-stok").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
+    } else {
+        renderModal();
+        $("table-modal").classList.remove("hidden");
+        $("tab-btn-modal").className = "px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-bold";
+    }
+}
+
+window.switchReportTab = t => { currentTab = t; render(); };
+$("btn-filter").addEventListener("click", render);
+
+$("btn-export").addEventListener("click", () => {
+    let csv = "Coffee Hawa - Report\n";
+    if(currentTab==="penjualan"){
+        const ft = getFilteredTransaksi();
+        csv += "Tanggal,Cabang,Item,Qty,Penjualan,Modal,Untung\n";
+        ft.forEach(t => { const items=(t.items||[]).map(i=>i.nama).join("; "); const qty=(t.items||[]).reduce((a,i)=>a+(i.qty||0),0); csv+=`${t.tanggal},${t.cabang},"${items}",${qty},${t.totalPenjualan||0},${t.totalModal||0},${(t.totalPenjualan||0)-(t.totalModal||0)}\n`; });
+    } else if(currentTab==="stok"){
+        const fs = getFilteredStok();
+        csv += "Tanggal,Cabang,Produk,Stok Awal,Terjual,Sisa,Tidak Laku\n";
+        fs.forEach(s => { csv+=`${s.tanggal},${s.cabang},${s.nama},${s.stokAwal||0},${s.terjual||0},${s.sisa||0},${(s.sisa||0)>0?(s.sisa||0):0}\n`; });
+    } else {
+        const fm = getFilteredModal();
+        csv += "Tanggal,Cabang,Jenis,Jumlah,Keterangan\n";
+        fm.forEach(m => csv+=`${m.tanggal},${m.cabang},${m.jenis},${m.jumlah||0},"${m.keterangan||""}"\n`);
+    }
+    const blob = new Blob([csv],{type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `coffee-hawa-${currentTab}-${new Date().toISOString().split("T")[0]}.csv`; a.click(); URL.revokeObjectURL(url);
+});
+
+window.hapusTransaksi = async (id) => {
+    if(!confirm("Yakin hapus transaksi ini? Stok harian akan dikembalikan.")) return;
+    try {
+        const t = allTransaksi.find(x => x.id === id);
+        if(t && t.items){
+            for(const it of t.items){
+                if(it.stokDocId){
+                    const stokRef = doc(db, "stokHarian", it.stokDocId);
+                    const stokSnap = await getDoc(stokRef);
+                    if(stokSnap.exists()){
+                        const data = stokSnap.data();
+                        const newTerjual = Math.max(0, (data.terjual||0) - (it.qty||0));
+                        await updateDoc(stokRef, { terjual: newTerjual, sisa: (data.stokAwal||0) - newTerjual });
+                    }
+                }
+            }
+        }
+        await deleteDoc(doc(db,"transaksi",id));
+        alert("✅ Transaksi dihapus & stok harian dikembalikan.");
+    } catch(err){ alert("❌ Gagal hapus: "+err.message); }
+};
+
+window.hapusModal = async (id) => {
+    if(!confirm("Yakin hapus data modal/pengeluaran ini?")) return;
+    try { await deleteDoc(doc(db,"modal",id)); alert("✅ Data modal dihapus."); }
+    catch(err){ alert("❌ Gagal hapus: "+err.message); }
+};
+
+onSnapshot(query(collection(db,"transaksi"), orderBy("createdAt","desc")), s => {
+    allTransaksi = s.docs.map(d => ({id:d.id,...d.data()})); render();
+});
+onSnapshot(query(collection(db,"modal"), orderBy("createdAt","desc")), s => {
+    allModal = s.docs.map(d => ({id:d.id,...d.data()})); render();
+});
+onSnapshot(collection(db,"stokHarian"), s => {
+    allStokHarian = s.docs.map(d => ({id:d.id,...d.data()})); render();
+});
+onSnapshot(collection(db,"cabang"), s => {
+    cabangs = s.docs.map(d => ({id:d.id,...d.data()}));
+    const ops = `<option value="all">Semua Cabang</option>` + cabangs.map(c => `<option value="${c.nama}">${c.nama}</option>`).join("");
+    $("filter-cabang").innerHTML = ops;
+});
+
+const today = new Date().toISOString().split("T")[0];
+const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+$("filter-dari").value = firstDay;
+$("filter-sampai").value = today;
+</script>
+</head>
+<body class="bg-amber-50 min-h-screen">
+<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-coffee text-2xl text-amber-300"></i>
+            <div><h1 class="text-xl font-bold">Coffee Hawa</h1><p class="text-xs text-amber-200">Sistem Penjualan Gerobak</p></div>
+        </div>
+        <div class="flex gap-2">
+            <a href="index.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-chart-line mr-1"></i> Dashboard</a>
+            <a href="penjualan.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-cash-register mr-1"></i> Penjualan</a>
+            <a href="report.html" class="px-4 py-2 bg-amber-800 rounded-lg text-sm hover:bg-amber-700 transition"><i class="fas fa-file-alt mr-1"></i> Report</a>
+        </div>
+    </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-amber-900">Report Penjualan, Stok & Modal</h2>
+        <p class="text-gray-600 text-sm">Filter, hapus, dan export laporan</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-[140px]">
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+            <select id="filter-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                <option value="all">Semua Cabang</option>
+            </select>
+        </div>
+        <div class="flex-1 min-w-[140px]">
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Dari Tanggal</label>
+            <input type="date" id="filter-dari" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+        </div>
+        <div class="flex-1 min-w-[140px]">
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Sampai Tanggal</label>
+            <input type="date" id="filter-sampai" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+        </div>
+        <button id="btn-filter" class="px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition"><i class="fas fa-search"></i> Filter</button>
+        <button id="btn-export" class="px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+
+    <div class="flex gap-2 mb-4">
+        <button id="tab-btn-penjualan" onclick="switchReportTab('penjualan')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-chart-bar mr-1"></i> Penjualan</button>
+        <button id="tab-btn-stok" onclick="switchReportTab('stok')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-boxes mr-1"></i> Stok Harian</button>
+        <button id="tab-btn-modal" onclick="switchReportTab('modal')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-wallet mr-1"></i> Modal</button>
+    </div>
+
+    <!-- Tabel Penjualan -->
+    <div id="table-penjualan" class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="bg-amber-100">
+                    <th class="px-4 py-3 text-left font-bold text-amber-900">Tanggal</th>
+                    <th class="px-4 py-3 text-left font-bold text-amber-900">Cabang</th>
+                    <th class="px-4 py-3 text-left font-bold text-amber-900">Item</th>
+                    <th class="px-4 py-3 text-center font-bold text-amber-900">Qty</th>
+                    <th class="px-4 py-3 text-right font-bold text-amber-900">Penjualan</th>
+                    <th class="px-4 py-3 text-right font-bold text-amber-900">Modal</th>
+                    <th class="px-4 py-3 text-right font-bold text-amber-900">Untung</th>
+                    <th class="px-4 py-3 text-center font-bold text-amber-900">Aksi</th>
+                </tr></thead>
+                <tbody id="tbody-penjualan"></tbody>
+                <tfoot id="tfoot-penjualan"></tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Tabel Stok Harian -->
+    <div id="table-stok" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="bg-green-100">
+                    <th class="px-4 py-3 text-left font-bold text-green-900">Tanggal</th>
+                    <th class="px-4 py-3 text-left font-bold text-green-900">Cabang</th>
+                    <th class="px-4 py-3 text-left font-bold text-green-900">Produk</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Stok Awal</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Terjual</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Sisa</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Tidak Laku</th>
+                </tr></thead>
+                <tbody id="tbody-stok"></tbody>
+                <tfoot id="tfoot-stok"></tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Tabel Modal -->
+    <div id="table-modal" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="bg-red-100">
+                    <th class="px-4 py-3 text-left font-bold text-red-900">Tanggal</th>
+                    <th class="px-4 py-3 text-left font-bold text-red-900">Cabang</th>
+                    <th class="px-4 py-3 text-left font-bold text-red-900">Jenis</th>
+                    <th class="px-4 py-3 text-right font-bold text-red-900">Jumlah</th>
+                    <th class="px-4 py-3 text-left font-bold text-red-900">Keterangan</th>
+                    <th class="px-4 py-3 text-center font-bold text-red-900">Aksi</th>
+                </tr></thead>
+                <tbody id="tbody-modal"></tbody>
+                <tfoot id="tfoot-modal"></tfoot>
+            </table>
+        </div>
+    </div>
+</main>
+</body>
+</html>
