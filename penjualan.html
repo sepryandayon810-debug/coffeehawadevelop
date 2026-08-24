@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coffee Hawa - Input Penjualan</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+.tab-active{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-weight:700}
+.tab-inactive{background:#fff;color:#57534e;border:1px solid #e7e5e4}
+</style>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, serverTimestamp, query, orderBy, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const $ = id => document.getElementById(id);
+const fmt = n => "Rp " + (n||0).toLocaleString("id-ID");
+
+let cabangs = [], produks = [], stokHarian = [];
+
+// ======== TAB SWITCHER ========
+window.showTab = function(tab){
+    ["transaksi","stokharian","cabang","produk","modal"].forEach(t => {
+        $("tab-"+t).classList.add("hidden");
+        const btn = $("btn-"+t);
+        btn.className = t===tab ? "px-4 py-2 rounded-lg text-sm tab-active transition" : "px-4 py-2 rounded-lg text-sm tab-inactive hover:bg-gray-50 transition";
+    });
+    $("tab-"+tab).classList.remove("hidden");
+};
+
+// ======== CABANG CRUD ========
+$("form-cabang").addEventListener("submit", async e => {
+    e.preventDefault();
+    const nama = $("input-nama-cabang").value.trim();
+    if(!nama) return alert("Nama cabang tidak boleh kosong!");
+    await addDoc(collection(db,"cabang"), { nama, createdAt: serverTimestamp() });
+    $("input-nama-cabang").value = "";
+});
+
+function renderCabangs(){
+    const tbody = $("tbody-cabang");
+    if(!cabangs.length){ tbody.innerHTML = `<tr><td colspan="3" class="text-center py-4 text-gray-400 text-sm">Belum ada cabang</td></tr>`; return; }
+    tbody.innerHTML = cabangs.map(c => `
+        <tr class="border-b border-gray-100">
+            <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.nama}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${c.id}</td>
+            <td class="px-4 py-3 text-sm">
+                <button onclick="editCabang('${c.id}','${c.nama}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="hapusCabang('${c.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join("");
+    const ops = `<option value="">-- Pilih Cabang --</option>` + cabangs.map(c => `<option value="${c.nama}">${c.nama}</option>`).join("");
+    $("pj-cabang").innerHTML = ops;
+    $("md-cabang").innerHTML = ops;
+    $("sh-cabang").innerHTML = ops;
+}
+window.editCabang = async (id, oldName) => {
+    const baru = prompt("Edit nama cabang:", oldName);
+    if(baru && baru.trim()) await updateDoc(doc(db,"cabang",id), { nama: baru.trim() });
+};
+window.hapusCabang = async (id) => {
+    if(!confirm("Hapus cabang ini?")) return;
+    await deleteDoc(doc(db,"cabang",id));
+};
+
+// ======== PRODUK MASTER CRUD (tanpa stok) ========
+$("form-produk").addEventListener("submit", async e => {
+    e.preventDefault();
+    const nama = $("prod-nama").value.trim();
+    const harga = parseInt($("prod-harga").value)||0;
+    const modal = parseInt($("prod-modal").value)||0;
+    if(!nama) return alert("Nama produk wajib diisi!");
+    await addDoc(collection(db,"produk"), { nama, hargaJual: harga, modalPerPcs: modal, createdAt: serverTimestamp() });
+    $("form-produk").reset();
+});
+
+function renderProduks(){
+    const tbody = $("tbody-produk");
+    if(!produks.length){ tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-400 text-sm">Belum ada produk</td></tr>`; return; }
+    tbody.innerHTML = produks.map(p => `
+        <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm font-medium text-gray-800">${p.nama}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">${fmt(p.hargaJual)}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">${fmt(p.modalPerPcs)}</td>
+            <td class="px-4 py-3 text-sm">
+                <button onclick="editProduk('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="hapusProduk('${p.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join("");
+}
+
+window.editProduk = async (id) => {
+    const p = produks.find(x => x.id === id);
+    if(!p) return;
+    const nama = prompt("Nama produk:", p.nama); if(!nama) return;
+    const harga = parseInt(prompt("Harga jual:", p.hargaJual))||0;
+    const modal = parseInt(prompt("Modal per pcs:", p.modalPerPcs))||0;
+    await updateDoc(doc(db,"produk",id), { nama, hargaJual:harga, modalPerPcs:modal });
+};
+window.hapusProduk = async (id) => {
+    if(!confirm("Hapus produk ini? Semua stok harian dan transaksi lama tetap ada.")) return;
+    await deleteDoc(doc(db,"produk",id));
+};
+
+// ======== INPUT STOK HARIAN ========
+async function loadProdukForStokHarian(){
+    const cabang = $("sh-cabang").value;
+    const tanggal = $("sh-tanggal").value;
+    const container = $("sh-produk-list");
+    if(!cabang || !tanggal){ container.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">Pilih cabang dan tanggal dulu</p>`; return; }
+
+    // Cek stok harian yang sudah ada
+    const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal));
+    const snap = await getDocs(q);
+    const existing = {};
+    snap.docs.forEach(d => { const data = d.data(); existing[data.produkId] = { id: d.id, ...data }; });
+
+    if(!produks.length){ container.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">Belum ada produk. Tambah di menu Kelola Produk.</p>`; return; }
+
+    let html = `<div class="grid grid-cols-3 gap-2 text-xs font-bold text-gray-600 mb-2 px-2">
+        <span>Produk</span><span class="text-center">Stok Awal</span><span class="text-center">Status</span>
+    </div>`;
+
+    produks.forEach(p => {
+        const ex = existing[p.id];
+        const val = ex ? ex.stokAwal : "";
+        const status = ex ? `<span class="text-green-600 text-xs font-bold"><i class="fas fa-check"></i> Sudah input</span>` : `<span class="text-amber-600 text-xs">Belum input</span>`;
+        html += `
+        <div class="grid grid-cols-3 gap-2 items-center bg-gray-50 rounded-lg p-2 mb-2">
+            <span class="text-sm font-medium text-gray-800">${p.nama}</span>
+            <input type="number" min="0" data-produk-id="${p.id}" data-produk-nama="${p.nama}" 
+                placeholder="0" value="${val}" 
+                class="sh-input-stok w-full px-2 py-1 border border-gray-200 rounded text-sm text-center">
+            <div class="text-center">${status}</div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+$("sh-cabang").addEventListener("change", loadProdukForStokHarian);
+$("sh-tanggal").addEventListener("change", loadProdukForStokHarian);
+
+$("form-stok-harian").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cabang = $("sh-cabang").value;
+    const tanggal = $("sh-tanggal").value;
+    if(!cabang || !tanggal) return alert("Pilih cabang dan tanggal!");
+
+    const inputs = document.querySelectorAll(".sh-input-stok");
+    let count = 0;
+    for(const inp of inputs){
+        const stokAwal = parseInt(inp.value)||0;
+        if(stokAwal <= 0) continue;
+        const produkId = inp.dataset.produkId;
+        const nama = inp.dataset.produkNama;
+
+        // Cek kalau sudah ada, update. Kalau belum, add.
+        const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal), where("produkId","==",produkId));
+        const snap = await getDocs(q);
+        if(snap.empty){
+            await addDoc(collection(db,"stokHarian"), {
+                cabang, tanggal, produkId, nama, stokAwal, terjual: 0, sisa: stokAwal,
+                createdAt: serverTimestamp()
+            });
+        } else {
+            const docId = snap.docs[0].id;
+            const old = snap.docs[0].data();
+            await updateDoc(doc(db,"stokHarian",docId), { stokAwal, sisa: stokAwal - (old.terjual||0) });
+        }
+        count++;
+    }
+    alert(`✅ ${count} produk berhasil diinput stok harian!`);
+    loadProdukForStokHarian();
+});
+
+// ======== TRANSAKSI ========
+let itemCount = 0;
+
+async function updateProdukSelectTransaksi(){
+    const cabang = $("pj-cabang").value;
+    const tanggal = $("pj-tanggal").value;
+    const container = $("items-container");
+    if(!cabang || !tanggal) return;
+
+    // Ambil stok harian untuk tanggal & cabang ini
+    const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal));
+    const snap = await getDocs(q);
+    const stokMap = {};
+    snap.docs.forEach(d => { const data = d.data(); stokMap[data.produkId] = { ...data, docId: d.id }; });
+
+    // Update semua select produk di items
+    document.querySelectorAll(".select-produk").forEach(sel => {
+        const oldVal = sel.value;
+        let html = `<option value="">-- Pilih Produk --</option>`;
+        produks.forEach(p => {
+            const s = stokMap[p.id];
+            if(s && s.sisa > 0){
+                html += `<option value="${p.id}" data-harga="${p.hargaJual}" data-modal="${p.modalPerPcs}" data-sisa="${s.sisa}" data-stok-doc="${s.docId}" data-nama="${p.nama}">${p.nama} (Sisa: ${s.sisa})</option>`;
+            } else if(s && s.sisa <= 0){
+                html += `<option disabled>${p.nama} (Habis)</option>`;
+            } else {
+                html += `<option disabled>${p.nama} (Belum input stok)</option>`;
+            }
+        });
+        sel.innerHTML = html;
+        sel.value = oldVal;
+    });
+}
+
+$("pj-cabang").addEventListener("change", updateProdukSelectTransaksi);
+$("pj-tanggal").addEventListener("change", updateProdukSelectTransaksi);
+
+function onProdukChange(row){
+    const sel = row.querySelector(".select-produk");
+    const opt = sel.options[sel.selectedIndex];
+    if(!opt.value) return;
+    row.querySelector(".item-harga").value = opt.dataset.harga;
+    row.querySelector(".item-modal").value = opt.dataset.modal;
+    row.querySelector(".stok-info").textContent = "Sisa stok hari ini: " + opt.dataset.sisa + " pcs";
+    row.querySelector(".stok-info").dataset.sisa = opt.dataset.sisa;
+    row.querySelector(".stok-info").dataset.stokDoc = opt.dataset.stokDoc;
+    hitungTotal();
+}
+window.onProdukChange = onProdukChange;
+
+window.addItemRow = function(){
+    itemCount++;
+    const div = document.createElement("div");
+    div.className = "item-row bg-amber-50 rounded-lg p-4 border border-dashed border-amber-300";
+    div.dataset.index = itemCount;
+    div.innerHTML = `
+        <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-bold text-amber-800">Item #${itemCount}</span>
+            ${itemCount>1 ? `<button type="button" onclick="this.closest('.item-row').remove();hitungTotal()" class="text-red-500 text-xs hover:text-red-700"><i class="fas fa-trash"></i> Hapus</button>` : ""}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
+            <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Produk</label>
+                <select onchange="onProdukChange(this.closest('.item-row'))" class="select-produk w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white" required>
+                    <option value="">-- Pilih Produk --</option>
+                </select>
+                <p class="stok-info text-xs text-amber-700 mt-1 font-medium" data-sisa="0" data-stok-doc=""></p>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Qty</label>
+                <input type="number" min="1" value="1" class="item-qty w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" oninput="hitungTotal()" required>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual</label>
+                <input type="number" readonly class="item-harga w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100" required>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs</label>
+                <input type="number" readonly class="item-modal w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100" required>
+            </div>
+        </div>`;
+    $("items-container").appendChild(div);
+    updateProdukSelectTransaksi();
+};
+
+window.hitungTotal = function(){
+    let totalJual = 0, totalModal = 0;
+    document.querySelectorAll(".item-row").forEach(row => {
+        const qty = parseInt(row.querySelector(".item-qty").value)||0;
+        const harga = parseInt(row.querySelector(".item-harga").value)||0;
+        const modal = parseInt(row.querySelector(".item-modal").value)||0;
+        const sisa = parseInt(row.querySelector(".stok-info").dataset.sisa)||0;
+        if(qty > sisa){ row.querySelector(".item-qty").value = sisa; }
+        totalJual += Math.min(qty, sisa) * harga;
+        totalModal += Math.min(qty, sisa) * modal;
+    });
+    $("preview-penjualan").textContent = fmt(totalJual);
+    $("preview-modal").textContent = fmt(totalModal);
+    $("preview-untung").textContent = fmt(totalJual - totalModal);
+    return { totalJual, totalModal };
+};
+
+$("btn-tambah-item").addEventListener("click", () => addItemRow());
+
+$("form-penjualan").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cabang = $("pj-cabang").value;
+    const tanggal = $("pj-tanggal").value;
+    if(!cabang || !tanggal) return alert("Pilih cabang dan tanggal terlebih dahulu!");
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Menyimpan...';
+
+    const items = [];
+    let ok = true;
+    for(const row of document.querySelectorAll(".item-row")){
+        const sel = row.querySelector(".select-produk");
+        const pid = sel.value;
+        if(!pid){ ok = false; break; }
+        const p = produks.find(x => x.id === pid);
+        const qty = parseInt(row.querySelector(".item-qty").value)||0;
+        const sisa = parseInt(row.querySelector(".stok-info").dataset.sisa)||0;
+        const stokDocId = row.querySelector(".stok-info").dataset.stokDoc;
+        if(qty > sisa){ alert("Stok "+p.nama+" tidak mencukupi! Sisa: "+sisa); ok = false; break; }
+        if(!stokDocId){ alert("Stok harian "+p.nama+" tidak ditemukan!"); ok = false; break; }
+        items.push({ produkId: pid, nama: p.nama, qty, hargaJual: p.hargaJual, modalPerPcs: p.modalPerPcs, stokDocId });
+    }
+    if(!ok || !items.length){ btn.disabled = false; btn.innerHTML = '💾 Simpan Transaksi'; return; }
+
+    const { totalJual, totalModal } = hitungTotal();
+    try {
+        await addDoc(collection(db,"transaksi"), {
+            cabang, tanggal, items,
+            totalPenjualan: totalJual, totalModal, untungBersih: totalJual-totalModal,
+            createdAt: serverTimestamp()
+        });
+        // Kurangi stok harian
+        for(const it of items){
+            const stokRef = doc(db,"stokHarian",it.stokDocId);
+            const stokSnap = await getDoc(stokRef);
+            if(stokSnap.exists()){
+                const data = stokSnap.data();
+                const newTerjual = (data.terjual||0) + it.qty;
+                await updateDoc(stokRef, { terjual: newTerjual, sisa: data.stokAwal - newTerjual });
+            }
+        }
+        alert("✅ Transaksi berhasil disimpan!");
+        $("items-container").innerHTML = ""; itemCount = 0; addItemRow(); hitungTotal();
+    } catch(err){ alert("❌ Gagal: "+err.message); }
+    finally { btn.disabled = false; btn.innerHTML = '💾 Simpan Transaksi'; }
+});
+
+// ======== MODAL / PENGELUARAN ========
+$("form-modal").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cabang = $("md-cabang").value;
+    if(!cabang) return alert("Pilih cabang!");
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Menyimpan...';
+    try {
+        await addDoc(collection(db,"modal"), {
+            cabang, tanggal: $("md-tanggal").value,
+            jenis: $("md-jenis").value,
+            jumlah: parseInt($("md-jumlah").value)||0,
+            keterangan: $("md-keterangan").value,
+            createdAt: serverTimestamp()
+        });
+        alert("✅ Modal berhasil disimpan!"); $("form-modal").reset();
+        $("md-tanggal").valueAsDate = new Date();
+    } catch(err){ alert("❌ Gagal: "+err.message); }
+    finally { btn.disabled = false; btn.innerHTML = '💾 Simpan Modal'; }
+});
+
+// ======== LISTENERS ========
+onSnapshot(query(collection(db,"cabang"), orderBy("createdAt","desc")), s => {
+    cabangs = s.docs.map(d => ({id:d.id,...d.data()}));
+    renderCabangs();
+});
+onSnapshot(query(collection(db,"produk"), orderBy("createdAt","desc")), s => {
+    produks = s.docs.map(d => ({id:d.id,...d.data()}));
+    renderProduks();
+});
+onSnapshot(collection(db,"stokHarian"), s => {
+    stokHarian = s.docs.map(d => ({id:d.id,...d.data()}));
+});
+
+addItemRow();
+$("pj-tanggal").valueAsDate = new Date();
+$("md-tanggal").valueAsDate = new Date();
+$("sh-tanggal").valueAsDate = new Date();
+showTab("transaksi");
+</script>
+</head>
+<body class="bg-amber-50 min-h-screen">
+<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-coffee text-2xl text-amber-300"></i>
+            <div><h1 class="text-xl font-bold">Coffee Hawa</h1><p class="text-xs text-amber-200">Sistem Penjualan Gerobak</p></div>
+        </div>
+        <div class="flex gap-2">
+            <a href="index.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-chart-line mr-1"></i> Dashboard</a>
+            <a href="penjualan.html" class="px-4 py-2 bg-amber-800 rounded-lg text-sm hover:bg-amber-700 transition"><i class="fas fa-cash-register mr-1"></i> Penjualan</a>
+            <a href="report.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-file-alt mr-1"></i> Report</a>
+        </div>
+    </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-amber-900">Input Penjualan & Pengaturan</h2>
+        <p class="text-gray-600 text-sm">Transaksi, stok harian, kelola cabang, kelola produk, input modal</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-6">
+        <button id="btn-transaksi" onclick="showTab('transaksi')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-shopping-cart mr-1"></i> Transaksi</button>
+        <button id="btn-stokharian" onclick="showTab('stokharian')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-boxes mr-1"></i> Input Stok Harian</button>
+        <button id="btn-cabang" onclick="showTab('cabang')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-store mr-1"></i> Kelola Cabang</button>
+        <button id="btn-produk" onclick="showTab('produk')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-mug-hot mr-1"></i> Kelola Produk</button>
+        <button id="btn-modal" onclick="showTab('modal')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-wallet mr-1"></i> Input Modal</button>
+    </div>
+
+    <!-- TAB TRANSAKSI -->
+    <div id="tab-transaksi" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm p-6 max-w-3xl mx-auto">
+            <h3 class="font-bold text-amber-900 mb-4 flex items-center gap-2"><i class="fas fa-shopping-cart text-amber-600"></i> Form Transaksi Penjualan</h3>
+            <div class="bg-amber-100 border border-amber-300 rounded-lg p-3 mb-4 text-sm text-amber-800">
+                <i class="fas fa-info-circle mr-1"></i> <strong>Cara:</strong> 1) Input Stok Harian dulu pagi ini → 2) Baru transaksi. Stok terpisah per hari.
+            </div>
+            <form id="form-penjualan" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                        <select id="pj-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                            <option value="">-- Pilih Cabang --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                        <input type="date" id="pj-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                    </div>
+                </div>
+                <div id="items-container" class="space-y-3"></div>
+                <button type="button" id="btn-tambah-item" class="w-full py-2 border-2 border-dashed border-amber-400 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-50 transition">
+                    <i class="fas fa-plus"></i> Tambah Item
+                </button>
+                <div class="bg-gray-50 rounded-lg p-4 space-y-2 border border-gray-100">
+                    <div class="flex justify-between text-sm"><span class="text-gray-500">Total Penjualan</span><span class="font-bold" id="preview-penjualan">Rp 0</span></div>
+                    <div class="flex justify-between text-sm"><span class="text-gray-500">Total Modal</span><span class="font-bold text-red-500" id="preview-modal">Rp 0</span></div>
+                    <div class="border-t pt-2 flex justify-between text-sm font-bold text-green-600"><span>Untung Bersih</span><span id="preview-untung">Rp 0</span></div>
+                </div>
+                <button type="submit" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-lg font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-md">
+                    <i class="fas fa-save mr-1"></i> Simpan Transaksi
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- TAB STOK HARIAN -->
+    <div id="tab-stokharian" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm p-6 max-w-2xl mx-auto">
+            <h3 class="font-bold text-amber-900 mb-2 flex items-center gap-2"><i class="fas fa-boxes text-amber-600"></i> Input Stok Awal Harian</h3>
+            <p class="text-gray-500 text-sm mb-4">Input ini dilakukan <strong>setiap pagi</strong> sebelum berjualan. Stok terpisah per hari.</p>
+            <form id="form-stok-harian" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                        <select id="sh-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                            <option value="">-- Pilih Cabang --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                        <input type="date" id="sh-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                    </div>
+                </div>
+                <div id="sh-produk-list" class="space-y-2 max-h-96 overflow-y-auto border border-gray-100 rounded-lg p-3 bg-white">
+                    <p class="text-gray-400 text-sm text-center py-4">Pilih cabang dan tanggal untuk melihat produk</p>
+                </div>
+                <button type="submit" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-lg font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-md">
+                    <i class="fas fa-save mr-1"></i> Simpan Stok Harian
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- TAB CABANG -->
+    <div id="tab-cabang" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-plus-circle mr-1"></i> Tambah Cabang Baru</h3>
+                <form id="form-cabang" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Cabang / Lokasi</label>
+                        <input type="text" id="input-nama-cabang" placeholder="Contoh: Pasar Minggu, Tebet..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                    </div>
+                    <button type="submit" class="w-full py-2 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 transition">
+                        <i class="fas fa-plus mr-1"></i> Tambah Cabang
+                    </button>
+                </form>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-store mr-1"></i> Daftar Cabang</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="bg-amber-100"><th class="px-4 py-2 text-left font-bold text-amber-900">Nama Cabang</th><th class="px-4 py-2 text-left font-bold text-amber-900">ID</th><th class="px-4 py-2 text-left font-bold text-amber-900">Aksi</th></tr></thead>
+                        <tbody id="tbody-cabang"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB PRODUK MASTER -->
+    <div id="tab-produk" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-plus-circle mr-1"></i> Tambah Produk (Master)</h3>
+                <p class="text-gray-500 text-xs mb-3">Ini hanya master data. Stok diatur di menu <strong>Input Stok Harian</strong>.</p>
+                <form id="form-produk" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Produk</label>
+                        <input type="text" id="prod-nama" placeholder="Contoh: Kopi Susu..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual (Rp)</label>
+                            <input type="number" id="prod-harga" placeholder="15000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs (Rp)</label>
+                            <input type="number" id="prod-modal" placeholder="7000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-2 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 transition">
+                        <i class="fas fa-plus mr-1"></i> Tambah Produk
+                    </button>
+                </form>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-mug-hot mr-1"></i> Daftar Produk (Master)</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="bg-amber-100">
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Produk</th>
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Harga Jual</th>
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Modal</th>
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Aksi</th>
+                        </tr></thead>
+                        <tbody id="tbody-produk"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB MODAL -->
+    <div id="tab-modal" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm p-6 max-w-xl mx-auto">
+            <h3 class="font-bold text-amber-900 mb-4 flex items-center gap-2"><i class="fas fa-wallet text-red-500"></i> Input Modal / Pengeluaran</h3>
+            <form id="form-modal" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                        <select id="md-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                            <option value="">-- Pilih Cabang --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                        <input type="date" id="md-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Jenis Modal / Pengeluaran</label>
+                    <select id="md-jenis" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        <option value="Modal Awal Hari">Modal Awal Hari</option>
+                        <option value="Bahan Baku - Kopi">Bahan Baku - Kopi</option>
+                        <option value="Bahan Baku - Susu">Bahan Baku - Susu</option>
+                        <option value="Bahan Baku - Gula">Bahan Baku - Gula</option>
+                        <option value="Gas Elpiji">Gas Elpiji</option>
+                        <option value="Plastik Cup">Plastik Cup</option>
+                        <option value="Sedotan">Sedotan</option>
+                        <option value="Lainnya">Lainnya</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Jumlah (Rp)</label>
+                    <input type="number" id="md-jumlah" placeholder="0" min="0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Keterangan</label>
+                    <textarea id="md-keterangan" rows="3" placeholder="Keterangan tambahan..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 resize-y"></textarea>
+                </div>
+                <button type="submit" class="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg font-bold hover:from-red-700 hover:to-red-800 transition shadow-md">
+                    <i class="fas fa-save mr-1"></i> Simpan Modal
+                </button>
+            </form>
+        </div>
+    </div>
+</main>
+</body>
+</html>
