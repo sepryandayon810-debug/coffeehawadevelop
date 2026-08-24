@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coffee Hawa - Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let transaksiData = [], modalData = [], cabangList = [];
+const fmt = n => "Rp " + (n||0).toLocaleString("id-ID");
+
+function hitungOmzet() {
+    const pc = {}, tot = { penjualan:0, modal:0, untung:0 };
+    cabangList.forEach(c => pc[c.nama] = { penjualan:0, modal:0, untung:0, transaksi:0 });
+    transaksiData.forEach(t => {
+        const c = t.cabang || "Tidak diketahui";
+        if(!pc[c]) pc[c] = { penjualan:0, modal:0, untung:0, transaksi:0 };
+        pc[c].penjualan += t.totalPenjualan||0;
+        pc[c].modal += t.totalModal||0;
+        pc[c].untung += (t.totalPenjualan - t.totalModal)||0;
+        pc[c].transaksi += 1;
+        tot.penjualan += t.totalPenjualan||0; tot.modal += t.totalModal||0;
+    });
+    modalData.forEach(m => {
+        const c = m.cabang || "Tidak diketahui";
+        if(!pc[c]) pc[c] = { penjualan:0, modal:0, untung:0, transaksi:0 };
+        pc[c].modal += m.jumlah||0; tot.modal += m.jumlah||0;
+    });
+    Object.keys(pc).forEach(k => pc[k].untung = pc[k].penjualan - pc[k].modal);
+    tot.untung = tot.penjualan - tot.modal;
+    return { pc, tot };
+}
+
+let chartInst = null;
+function renderChart(pc) {
+    const ctx = document.getElementById("omzetChart").getContext("2d");
+    const labels = Object.keys(pc);
+    if(chartInst) chartInst.destroy();
+    chartInst = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [
+                { label:"Penjualan", data: labels.map(l=>pc[l].penjualan), backgroundColor:"#d97706", borderRadius:4 },
+                { label:"Modal", data: labels.map(l=>pc[l].modal), backgroundColor:"#ef4444", borderRadius:4 },
+                { label:"Untung", data: labels.map(l=>pc[l].untung), backgroundColor:"#10b981", borderRadius:4 }
+            ]
+        },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"top"}}, scales:{y:{beginAtZero:true, ticks:{callback:v=>"Rp "+(v/1000)+"k"}}} }
+    });
+}
+
+function render() {
+    const { pc, tot } = hitungOmzet();
+    document.getElementById("total-penjualan").textContent = fmt(tot.penjualan);
+    document.getElementById("total-modal").textContent = fmt(tot.modal);
+    document.getElementById("total-untung").textContent = fmt(tot.untung);
+    document.getElementById("total-transaksi").textContent = transaksiData.length;
+    const container = document.getElementById("cabang-cards");
+    container.innerHTML = "";
+    if(!Object.keys(pc).length){ container.innerHTML = `<div class="text-center py-8 text-gray-400 col-span-full">Belum ada data transaksi</div>`; return; }
+    Object.keys(pc).forEach(cabang => {
+        const d = pc[cabang];
+        const div = document.createElement("div");
+        div.className = "bg-white rounded-xl shadow-sm border border-amber-100 p-5 hover:shadow-md transition";
+        div.innerHTML = `
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-amber-900 text-lg">${cabang}</h3>
+                <span class="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full font-semibold">${d.transaksi} Transaksi</span>
+            </div>
+            <div class="space-y-2">
+                <div class="flex justify-between text-sm"><span class="text-gray-500">Penjualan</span><span class="font-semibold text-green-600">${fmt(d.penjualan)}</span></div>
+                <div class="flex justify-between text-sm"><span class="text-gray-500">Modal</span><span class="font-semibold text-red-500">${fmt(d.modal)}</span></div>
+                <div class="border-t pt-2 flex justify-between text-sm"><span class="text-gray-600 font-medium">Untung Bersih</span><span class="font-bold ${d.untung>=0?"text-amber-700":"text-red-600"}">${fmt(d.untung)}</span></div>
+            </div>`;
+        container.appendChild(div);
+    });
+    renderChart(pc);
+}
+
+onSnapshot(collection(db,"transaksi"), s=>{ transaksiData=s.docs.map(d=>({id:d.id,...d.data()})); render(); });
+onSnapshot(collection(db,"modal"), s=>{ modalData=s.docs.map(d=>({id:d.id,...d.data()})); render(); });
+onSnapshot(collection(db,"cabang"), s=>{ cabangList=s.docs.map(d=>({id:d.id,...d.data()})); render(); });
+</script>
+</head>
+<body class="bg-amber-50 min-h-screen">
+<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-coffee text-2xl text-amber-300"></i>
+            <div><h1 class="text-xl font-bold">Coffee Hawa</h1><p class="text-xs text-amber-200">Sistem Penjualan Gerobak</p></div>
+        </div>
+        <div class="flex gap-2">
+            <a href="index.html" class="px-4 py-2 bg-amber-800 rounded-lg text-sm hover:bg-amber-700 transition"><i class="fas fa-chart-line mr-1"></i> Dashboard</a>
+            <a href="penjualan.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-cash-register mr-1"></i> Penjualan</a>
+            <a href="report.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-file-alt mr-1"></i> Report</a>
+        </div>
+    </div>
+</nav>
+<main class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-8">
+        <h2 class="text-2xl font-bold text-amber-900">Dashboard Omzet</h2>
+        <p class="text-gray-600 text-sm">Ringkasan penjualan seluruh cabang Coffee Hawa — update realtime</p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-amber-600">
+            <p class="text-gray-500 text-xs uppercase tracking-wide">Total Penjualan</p>
+            <p class="text-2xl font-bold text-amber-700 mt-1" id="total-penjualan">Rp 0</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-red-500">
+            <p class="text-gray-500 text-xs uppercase tracking-wide">Total Modal</p>
+            <p class="text-2xl font-bold text-red-600 mt-1" id="total-modal">Rp 0</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-green-500">
+            <p class="text-gray-500 text-xs uppercase tracking-wide">Untung Bersih</p>
+            <p class="text-2xl font-bold text-green-600 mt-1" id="total-untung">Rp 0</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-500">
+            <p class="text-gray-500 text-xs uppercase tracking-wide">Jumlah Transaksi</p>
+            <p class="text-2xl font-bold text-blue-600 mt-1" id="total-transaksi">0</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm p-6 mb-8">
+        <h3 class="font-bold text-amber-900 mb-4">📈 Grafik Omzet per Cabang</h3>
+        <div style="height:300px"><canvas id="omzetChart"></canvas></div>
+    </div>
+    <h3 class="font-bold text-amber-900 mb-4 text-lg">🏪 Detail per Cabang</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="cabang-cards"></div>
+</main>
+</body>
+</html>
