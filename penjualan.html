@@ -9,6 +9,90 @@
 <style>
 .tab-active{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-weight:700}
 .tab-inactive{background:#fff;color:#57534e;border:1px solid #e7e5e4}
+
+/* ===== MODAL ANIMATIONS ===== */
+.modal-backdrop {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.modal-enter {
+    animation: modalFadeIn 0.25s ease-out forwards;
+}
+.modal-exit {
+    animation: modalFadeOut 0.2s ease-in forwards;
+}
+.modal-content-enter {
+    animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.modal-content-exit {
+    animation: modalSlideDown 0.2s ease-in forwards;
+}
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes modalFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(30px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes modalSlideDown {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to { opacity: 0; transform: translateY(20px) scale(0.95); }
+}
+
+/* ===== TOAST ANIMATIONS ===== */
+.toast-enter {
+    animation: toastSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.toast-exit {
+    animation: toastSlideDown 0.3s ease-in forwards;
+}
+@keyframes toastSlideUp {
+    from { opacity: 0; transform: translate(-50%, 20px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toastSlideDown {
+    from { opacity: 1; transform: translate(-50%, 0); }
+    to { opacity: 0; transform: translate(-50%, 20px); }
+}
+
+/* ===== LOADING SPINNER ===== */
+.btn-loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    top: 50%;
+    left: 50%;
+    margin-left: -9px;
+    margin-top: -9px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ===== ICON PULSE ===== */
+.icon-pulse {
+    animation: iconPulse 0.5s ease-out;
+}
+@keyframes iconPulse {
+    0% { transform: scale(0.5); opacity: 0; }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); opacity: 1; }
+}
 </style>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -32,6 +116,131 @@ const fmt = n => "Rp " + (n||0).toLocaleString("id-ID");
 
 let cabangs = [], produks = [], stokHarian = [];
 
+// ======== CUSTOM MODAL SYSTEM ========
+window.showAlert = function({ title = "Informasi", message, type = "info", confirmText = "OK" }) {
+    const backdrop = $("alert-modal");
+    const content = $("alert-modal-content");
+    const iconBox = $("alert-icon-box");
+    const iconEl = $("alert-icon");
+    const titleEl = $("alert-title");
+    const msgEl = $("alert-message");
+    const btnEl = $("alert-btn");
+
+    // Type styling
+    const styles = {
+        success: { bg: "bg-emerald-50", border: "border-emerald-200", iconBg: "bg-emerald-100", iconColor: "text-emerald-600", btn: "bg-emerald-600 hover:bg-emerald-700", icon: "fa-check-circle" },
+        error:   { bg: "bg-red-50", border: "border-red-200", iconBg: "bg-red-100", iconColor: "text-red-600", btn: "bg-red-600 hover:bg-red-700", icon: "fa-times-circle" },
+        warning: { bg: "bg-amber-50", border: "border-amber-200", iconBg: "bg-amber-100", iconColor: "text-amber-600", btn: "bg-amber-600 hover:bg-amber-700", icon: "fa-exclamation-triangle" },
+        info:    { bg: "bg-blue-50", border: "border-blue-200", iconBg: "bg-blue-100", iconColor: "text-blue-600", btn: "bg-blue-600 hover:bg-blue-700", icon: "fa-info-circle" }
+    };
+    const s = styles[type] || styles.info;
+
+    content.className = `bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border ${s.border} ${s.bg}`;
+    iconBox.className = `w-16 h-16 rounded-full ${s.iconBg} flex items-center justify-center mx-auto mb-4 icon-pulse`;
+    iconEl.className = `fas ${s.icon} text-3xl ${s.iconColor}`;
+    titleEl.textContent = title;
+    titleEl.className = `text-lg font-bold text-center ${s.iconColor}`;
+    msgEl.textContent = message;
+    msgEl.className = "text-sm text-gray-600 text-center mt-2 leading-relaxed";
+    btnEl.className = `w-full py-2.5 ${s.btn} text-white rounded-xl font-bold text-sm transition shadow-md`;
+    btnEl.textContent = confirmText;
+
+    backdrop.classList.remove("hidden");
+    backdrop.classList.add("modal-enter");
+    content.classList.add("modal-content-enter");
+
+    btnEl.onclick = () => closeAlert();
+    backdrop.onclick = e => { if(e.target === backdrop) closeAlert(); };
+};
+
+window.closeAlert = function() {
+    const backdrop = $("alert-modal");
+    const content = $("alert-modal-content");
+    backdrop.classList.remove("modal-enter");
+    backdrop.classList.add("modal-exit");
+    content.classList.remove("modal-content-enter");
+    content.classList.add("modal-content-exit");
+    setTimeout(() => {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("modal-exit");
+        content.classList.remove("modal-content-exit");
+    }, 200);
+};
+
+window.showConfirm = function({ title = "Konfirmasi", message, type = "warning", confirmText = "Ya, Lanjutkan", cancelText = "Batal", onConfirm, onCancel }) {
+    const backdrop = $("confirm-modal");
+    const content = $("confirm-modal-content");
+    const iconBox = $("confirm-icon-box");
+    const iconEl = $("confirm-icon");
+    const titleEl = $("confirm-title");
+    const msgEl = $("confirm-message");
+    const btnConfirm = $("confirm-btn-yes");
+    const btnCancel = $("confirm-btn-no");
+
+    const styles = {
+        danger:  { iconBg: "bg-red-100", iconColor: "text-red-600", btn: "bg-red-600 hover:bg-red-700", icon: "fa-trash-alt" },
+        warning: { iconBg: "bg-amber-100", iconColor: "text-amber-600", btn: "bg-amber-600 hover:bg-amber-700", icon: "fa-exclamation-triangle" },
+        info:    { iconBg: "bg-blue-100", iconColor: "text-blue-600", btn: "bg-blue-600 hover:bg-blue-700", icon: "fa-question-circle" }
+    };
+    const s = styles[type] || styles.warning;
+
+    content.className = `bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100`;
+    iconBox.className = `w-16 h-16 rounded-full ${s.iconBg} flex items-center justify-center mx-auto mb-4 icon-pulse`;
+    iconEl.className = `fas ${s.icon} text-3xl ${s.iconColor}`;
+    titleEl.textContent = title;
+    titleEl.className = `text-lg font-bold text-center ${s.iconColor}`;
+    msgEl.textContent = message;
+    msgEl.className = "text-sm text-gray-600 text-center mt-2 leading-relaxed";
+    btnConfirm.className = `flex-1 py-2.5 ${s.btn} text-white rounded-xl font-bold text-sm transition shadow-md`;
+    btnConfirm.textContent = confirmText;
+    btnCancel.textContent = cancelText;
+
+    backdrop.classList.remove("hidden");
+    backdrop.classList.add("modal-enter");
+    content.classList.add("modal-content-enter");
+
+    btnConfirm.onclick = () => {
+        closeConfirm();
+        if(onConfirm) onConfirm();
+    };
+    btnCancel.onclick = () => {
+        closeConfirm();
+        if(onCancel) onCancel();
+    };
+    backdrop.onclick = e => { if(e.target === backdrop) { closeConfirm(); if(onCancel) onCancel(); } };
+};
+
+window.closeConfirm = function() {
+    const backdrop = $("confirm-modal");
+    const content = $("confirm-modal-content");
+    backdrop.classList.remove("modal-enter");
+    backdrop.classList.add("modal-exit");
+    content.classList.remove("modal-content-enter");
+    content.classList.add("modal-content-exit");
+    setTimeout(() => {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("modal-exit");
+        content.classList.remove("modal-content-exit");
+    }, 200);
+};
+
+window.showToast = function(msg, type="success") {
+    const t = $("toast");
+    const icon = type === "error" ? "fa-times-circle" : type === "warning" ? "fa-exclamation-circle" : "fa-check-circle";
+    const bg = type === "error" ? "bg-red-600" : type === "warning" ? "bg-amber-500" : "bg-emerald-600";
+    t.innerHTML = `<i class="fas ${icon} mr-2"></i>${msg}`;
+    t.className = `fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 ${bg} text-white toast-enter flex items-center`;
+    t.classList.remove("hidden");
+    setTimeout(() => {
+        t.classList.remove("toast-enter");
+        t.classList.add("toast-exit");
+        setTimeout(() => {
+            t.classList.add("hidden");
+            t.classList.remove("toast-exit");
+        }, 300);
+    }, 3000);
+};
+
 // ======== TAB SWITCHER ========
 window.showTab = function(tab){
     ["transaksi","stokharian","cabang","produk","modal"].forEach(t => {
@@ -46,9 +255,13 @@ window.showTab = function(tab){
 $("form-cabang").addEventListener("submit", async e => {
     e.preventDefault();
     const nama = $("input-nama-cabang").value.trim();
-    if(!nama) return alert("Nama cabang tidak boleh kosong!");
+    if(!nama) {
+        showAlert({ title: "Validasi Gagal", message: "Nama cabang tidak boleh kosong!", type: "warning" });
+        return;
+    }
     await addDoc(collection(db,"cabang"), { nama, createdAt: serverTimestamp() });
     $("input-nama-cabang").value = "";
+    showToast("Cabang berhasil ditambahkan!");
 });
 
 function renderCabangs(){
@@ -57,10 +270,10 @@ function renderCabangs(){
     tbody.innerHTML = cabangs.map(c => `
         <tr class="border-b border-gray-100">
             <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.nama}</td>
-            <td class="px-4 py-3 text-sm text-gray-500">${c.id}</td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono text-xs">${c.id}</td>
             <td class="px-4 py-3 text-sm">
-                <button onclick="editCabang('${c.id}','${c.nama}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
-                <button onclick="hapusCabang('${c.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+                <button onclick="editCabang('${c.id}','${c.nama}')" class="text-blue-600 hover:text-blue-800 mr-2 transition" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="hapusCabang('${c.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`).join("");
     const ops = `<option value="">-- Pilih Cabang --</option>` + cabangs.map(c => `<option value="${c.nama}">${c.nama}</option>`).join("");
@@ -72,44 +285,57 @@ window.editCabang = function(id, oldName) {
     $("modal-title").textContent = "Edit Cabang";
     $("modal-body").innerHTML = `
         <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Cabang</label>
-        <input type="text" id="modal-input" value="${oldName}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" autofocus>
+        <input type="text" id="modal-input" value="${oldName}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" autofocus>
     `;
     $("modal-action").onclick = async () => {
         const baru = $("modal-input").value.trim();
         if(baru) {
             await updateDoc(doc(db,"cabang",id), { nama: baru });
             closeModal();
+            showToast("Cabang berhasil diperbarui!");
         }
     };
     openModal();
 };
 window.hapusCabang = async (id) => {
-    if(!confirm("Hapus cabang ini?")) return;
-    await deleteDoc(doc(db,"cabang",id));
+    showConfirm({
+        title: "Hapus Cabang?",
+        message: "Cabang ini akan dihapus secara permanen. Data transaksi lama tidak akan terpengaruh.",
+        type: "danger",
+        confirmText: "Ya, Hapus",
+        onConfirm: async () => {
+            await deleteDoc(doc(db,"cabang",id));
+            showToast("Cabang berhasil dihapus!");
+        }
+    });
 };
 
-// ======== PRODUK MASTER CRUD (tanpa stok) ========
+// ======== PRODUK MASTER CRUD ========
 $("form-produk").addEventListener("submit", async e => {
     e.preventDefault();
     const nama = $("prod-nama").value.trim();
     const harga = parseInt($("prod-harga").value)||0;
     const modal = parseInt($("prod-modal").value)||0;
-    if(!nama) return alert("Nama produk wajib diisi!");
+    if(!nama) {
+        showAlert({ title: "Validasi Gagal", message: "Nama produk wajib diisi!", type: "warning" });
+        return;
+    }
     await addDoc(collection(db,"produk"), { nama, hargaJual: harga, modalPerPcs: modal, createdAt: serverTimestamp() });
     $("form-produk").reset();
+    showToast("Produk berhasil ditambahkan!");
 });
 
 function renderProduks(){
     const tbody = $("tbody-produk");
     if(!produks.length){ tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-400 text-sm">Belum ada produk</td></tr>`; return; }
     tbody.innerHTML = produks.map(p => `
-        <tr class="border-b border-gray-100 hover:bg-gray-50">
+        <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
             <td class="px-4 py-3 text-sm font-medium text-gray-800">${p.nama}</td>
             <td class="px-4 py-3 text-sm text-gray-700">${fmt(p.hargaJual)}</td>
             <td class="px-4 py-3 text-sm text-gray-700">${fmt(p.modalPerPcs)}</td>
             <td class="px-4 py-3 text-sm">
-                <button onclick="editProduk('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
-                <button onclick="hapusProduk('${p.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+                <button onclick="editProduk('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2 transition" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="hapusProduk('${p.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`).join("");
 }
@@ -122,16 +348,16 @@ window.editProduk = function(id) {
         <div class="space-y-3">
             <div>
                 <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Produk</label>
-                <input type="text" id="modal-nama" value="${p.nama}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                <input type="text" id="modal-nama" value="${p.nama}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
             </div>
             <div class="grid grid-cols-2 gap-2">
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual</label>
-                    <input type="number" id="modal-harga" value="${p.hargaJual}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                    <input type="number" id="modal-harga" value="${p.hargaJual}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs</label>
-                    <input type="number" id="modal-modal" value="${p.modalPerPcs}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                    <input type="number" id="modal-modal" value="${p.modalPerPcs}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
                 </div>
             </div>
         </div>
@@ -143,13 +369,22 @@ window.editProduk = function(id) {
         if(nama) {
             await updateDoc(doc(db,"produk",id), { nama, hargaJual:harga, modalPerPcs:modalVal });
             closeModal();
+            showToast("Produk berhasil diperbarui!");
         }
     };
     openModal();
 };
 window.hapusProduk = async (id) => {
-    if(!confirm("Hapus produk ini? Semua stok harian dan transaksi lama tetap ada.")) return;
-    await deleteDoc(doc(db,"produk",id));
+    showConfirm({
+        title: "Hapus Produk?",
+        message: "Produk ini akan dihapus dari master data. Semua stok harian dan transaksi lama tetap ada.",
+        type: "danger",
+        confirmText: "Ya, Hapus",
+        onConfirm: async () => {
+            await deleteDoc(doc(db,"produk",id));
+            showToast("Produk berhasil dihapus!");
+        }
+    });
 };
 
 // ======== INPUT STOK HARIAN ========
@@ -159,7 +394,6 @@ async function loadProdukForStokHarian(){
     const container = $("sh-produk-list");
     if(!cabang || !tanggal){ container.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">Pilih cabang dan tanggal dulu</p>`; return; }
 
-    // Cek stok harian yang sudah ada
     const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal));
     const snap = await getDocs(q);
     const existing = {};
@@ -174,13 +408,15 @@ async function loadProdukForStokHarian(){
     produks.forEach(p => {
         const ex = existing[p.id];
         const val = ex ? ex.stokAwal : "";
-        const status = ex ? `<span class="text-green-600 text-xs font-bold"><i class="fas fa-check"></i> Sudah input</span>` : `<span class="text-amber-600 text-xs">Belum input</span>`;
+        const status = ex 
+            ? `<span class="text-emerald-600 text-xs font-bold flex items-center justify-center gap-1"><i class="fas fa-check-circle"></i> Sudah input</span>` 
+            : `<span class="text-amber-600 text-xs flex items-center justify-center gap-1"><i class="fas fa-clock"></i> Belum input</span>`;
         html += `
-        <div class="grid grid-cols-3 gap-2 items-center bg-gray-50 rounded-lg p-2 mb-2">
+        <div class="grid grid-cols-3 gap-2 items-center bg-gray-50 rounded-lg p-2 mb-2 hover:bg-amber-50 transition">
             <span class="text-sm font-medium text-gray-800">${p.nama}</span>
             <input type="number" min="0" data-produk-id="${p.id}" data-produk-nama="${p.nama}" 
                 placeholder="0" value="${val}" 
-                class="sh-input-stok w-full px-2 py-1 border border-gray-200 rounded text-sm text-center">
+                class="sh-input-stok w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
             <div class="text-center">${status}</div>
         </div>`;
     });
@@ -194,7 +430,14 @@ $("form-stok-harian").addEventListener("submit", async e => {
     e.preventDefault();
     const cabang = $("sh-cabang").value;
     const tanggal = $("sh-tanggal").value;
-    if(!cabang || !tanggal) return alert("Pilih cabang dan tanggal!");
+    if(!cabang || !tanggal) {
+        showAlert({ title: "Data Belum Lengkap", message: "Pilih cabang dan tanggal terlebih dahulu!", type: "warning" });
+        return;
+    }
+
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.classList.add("btn-loading");
+    btn.disabled = true;
 
     const inputs = document.querySelectorAll(".sh-input-stok");
     let count = 0;
@@ -204,7 +447,6 @@ $("form-stok-harian").addEventListener("submit", async e => {
         const produkId = inp.dataset.produkId;
         const nama = inp.dataset.produkNama;
 
-        // Cek kalau sudah ada, update. Kalau belum, add.
         const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal), where("produkId","==",produkId));
         const snap = await getDocs(q);
         if(snap.empty){
@@ -219,7 +461,15 @@ $("form-stok-harian").addEventListener("submit", async e => {
         }
         count++;
     }
-    alert(`✅ ${count} produk berhasil diinput stok harian!`);
+
+    btn.classList.remove("btn-loading");
+    btn.disabled = false;
+
+    if(count > 0) {
+        showAlert({ title: "Berhasil!", message: `${count} produk berhasil diinput stok harian.`, type: "success" });
+    } else {
+        showAlert({ title: "Perhatian", message: "Tidak ada produk yang diinput. Masukkan stok awal minimal 1 produk.", type: "warning" });
+    }
     loadProdukForStokHarian();
 });
 
@@ -232,13 +482,11 @@ async function updateProdukSelectTransaksi(){
     const container = $("items-container");
     if(!cabang || !tanggal) return;
 
-    // Ambil stok harian untuk tanggal & cabang ini
     const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal));
     const snap = await getDocs(q);
     const stokMap = {};
     snap.docs.forEach(d => { const data = d.data(); stokMap[data.produkId] = { ...data, docId: d.id }; });
 
-    // Update semua select produk di items
     document.querySelectorAll(".select-produk").forEach(sel => {
         const oldVal = sel.value;
         let html = `<option value="">-- Pilih Produk --</option>`;
@@ -276,24 +524,24 @@ window.onProdukChange = onProdukChange;
 window.addItemRow = function(){
     itemCount++;
     const div = document.createElement("div");
-    div.className = "item-row bg-amber-50 rounded-lg p-4 border border-dashed border-amber-300";
+    div.className = "item-row bg-amber-50 rounded-xl p-4 border border-dashed border-amber-300 transition hover:border-amber-400";
     div.dataset.index = itemCount;
     div.innerHTML = `
         <div class="flex justify-between items-center mb-2">
-            <span class="text-xs font-bold text-amber-800">Item #${itemCount}</span>
-            ${itemCount>1 ? `<button type="button" onclick="this.closest('.item-row').remove();hitungTotal()" class="text-red-500 text-xs hover:text-red-700"><i class="fas fa-trash"></i> Hapus</button>` : ""}
+            <span class="text-xs font-bold text-amber-800 flex items-center gap-1"><i class="fas fa-tag"></i> Item #${itemCount}</span>
+            ${itemCount>1 ? `<button type="button" onclick="this.closest('.item-row').remove();hitungTotal()" class="text-red-500 text-xs hover:text-red-700 transition flex items-center gap-1"><i class="fas fa-trash"></i> Hapus</button>` : ""}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
             <div class="md:col-span-2">
                 <label class="block text-xs font-semibold text-gray-600 mb-1">Produk</label>
-                <select onchange="onProdukChange(this.closest('.item-row'))" class="select-produk w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white" required>
+                <select onchange="onProdukChange(this.closest('.item-row'))" class="select-produk w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                     <option value="">-- Pilih Produk --</option>
                 </select>
-                <p class="stok-info text-xs text-amber-700 mt-1 font-medium" data-sisa="0" data-stok-doc=""></p>
+                <p class="stok-info text-xs text-amber-700 mt-1 font-medium flex items-center gap-1" data-sisa="0" data-stok-doc=""><i class="fas fa-box-open"></i> <span>Pilih produk untuk melihat stok</span></p>
             </div>
             <div>
                 <label class="block text-xs font-semibold text-gray-600 mb-1">Qty</label>
-                <input type="number" min="1" value="1" class="item-qty w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" oninput="hitungTotal()" required>
+                <input type="number" min="1" value="1" class="item-qty w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" oninput="hitungTotal()" required>
             </div>
             <div>
                 <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual</label>
@@ -331,9 +579,13 @@ $("form-penjualan").addEventListener("submit", async e => {
     e.preventDefault();
     const cabang = $("pj-cabang").value;
     const tanggal = $("pj-tanggal").value;
-    if(!cabang || !tanggal) return alert("Pilih cabang dan tanggal terlebih dahulu!");
+    if(!cabang || !tanggal) {
+        showAlert({ title: "Data Belum Lengkap", message: "Pilih cabang dan tanggal terlebih dahulu!", type: "warning" });
+        return;
+    }
     const btn = e.target.querySelector('button[type="submit"]');
-    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Menyimpan...';
+    btn.classList.add("btn-loading");
+    btn.disabled = true;
 
     const items = [];
     let ok = true;
@@ -345,11 +597,21 @@ $("form-penjualan").addEventListener("submit", async e => {
         const qty = parseInt(row.querySelector(".item-qty").value)||0;
         const sisa = parseInt(row.querySelector(".stok-info").dataset.sisa)||0;
         const stokDocId = row.querySelector(".stok-info").dataset.stokDoc;
-        if(qty > sisa){ alert("Stok "+p.nama+" tidak mencukupi! Sisa: "+sisa); ok = false; break; }
-        if(!stokDocId){ alert("Stok harian "+p.nama+" tidak ditemukan!"); ok = false; break; }
+        if(qty > sisa){ 
+            showAlert({ title: "Stok Tidak Mencukupi", message: `Stok ${p.nama} tidak mencukupi! Sisa: ${sisa} pcs`, type: "warning" }); 
+            ok = false; break; 
+        }
+        if(!stokDocId){ 
+            showAlert({ title: "Stok Tidak Ditemukan", message: `Stok harian ${p.nama} tidak ditemukan! Input stok harian terlebih dahulu.`, type: "error" }); 
+            ok = false; break; 
+        }
         items.push({ produkId: pid, nama: p.nama, qty, hargaJual: p.hargaJual, modalPerPcs: p.modalPerPcs, stokDocId });
     }
-    if(!ok || !items.length){ btn.disabled = false; btn.innerHTML = '💾 Simpan Transaksi'; return; }
+    if(!ok || !items.length){ 
+        btn.classList.remove("btn-loading");
+        btn.disabled = false; 
+        return; 
+    }
 
     const { totalJual, totalModal } = hitungTotal();
     try {
@@ -358,7 +620,6 @@ $("form-penjualan").addEventListener("submit", async e => {
             totalPenjualan: totalJual, totalModal, untungBersih: totalJual-totalModal,
             createdAt: serverTimestamp()
         });
-        // Kurangi stok harian
         for(const it of items){
             const stokRef = doc(db,"stokHarian",it.stokDocId);
             const stokSnap = await getDoc(stokRef);
@@ -368,19 +629,32 @@ $("form-penjualan").addEventListener("submit", async e => {
                 await updateDoc(stokRef, { terjual: newTerjual, sisa: data.stokAwal - newTerjual });
             }
         }
-        alert("✅ Transaksi berhasil disimpan!");
+        showAlert({ 
+            title: "Transaksi Berhasil!", 
+            message: `Transaksi penjualan berhasil disimpan. Total penjualan: ${fmt(totalJual)} | Untung bersih: ${fmt(totalJual-totalModal)}`, 
+            type: "success" 
+        });
         $("items-container").innerHTML = ""; itemCount = 0; addItemRow(); hitungTotal();
-    } catch(err){ alert("❌ Gagal: "+err.message); }
-    finally { btn.disabled = false; btn.innerHTML = '💾 Simpan Transaksi'; }
+    } catch(err){ 
+        showAlert({ title: "Gagal Menyimpan", message: err.message, type: "error" }); 
+    }
+    finally { 
+        btn.classList.remove("btn-loading");
+        btn.disabled = false; 
+    }
 });
 
 // ======== MODAL / PENGELUARAN ========
 $("form-modal").addEventListener("submit", async e => {
     e.preventDefault();
     const cabang = $("md-cabang").value;
-    if(!cabang) return alert("Pilih cabang!");
+    if(!cabang) {
+        showAlert({ title: "Validasi Gagal", message: "Pilih cabang terlebih dahulu!", type: "warning" });
+        return;
+    }
     const btn = e.target.querySelector('button[type="submit"]');
-    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Menyimpan...';
+    btn.classList.add("btn-loading");
+    btn.disabled = true;
     try {
         await addDoc(collection(db,"modal"), {
             cabang, tanggal: $("md-tanggal").value,
@@ -389,10 +663,16 @@ $("form-modal").addEventListener("submit", async e => {
             keterangan: $("md-keterangan").value,
             createdAt: serverTimestamp()
         });
-        alert("✅ Modal berhasil disimpan!"); $("form-modal").reset();
+        showAlert({ title: "Berhasil!", message: "Modal / pengeluaran berhasil disimpan.", type: "success" });
+        $("form-modal").reset();
         $("md-tanggal").valueAsDate = new Date();
-    } catch(err){ alert("❌ Gagal: "+err.message); }
-    finally { btn.disabled = false; btn.innerHTML = '💾 Simpan Modal'; }
+    } catch(err){ 
+        showAlert({ title: "Gagal Menyimpan", message: err.message, type: "error" }); 
+    }
+    finally { 
+        btn.classList.remove("btn-loading");
+        btn.disabled = false; 
+    }
 });
 
 // ======== LISTENERS ========
@@ -414,9 +694,10 @@ $("md-tanggal").valueAsDate = new Date();
 $("sh-tanggal").valueAsDate = new Date();
 showTab("transaksi");
 </script>
+<base target="_blank">
 </head>
 <body class="bg-amber-50 min-h-screen">
-<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-50">
+<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-3">
         <div class="flex items-center gap-3">
             <i class="fas fa-coffee text-2xl text-amber-300"></i>
@@ -455,26 +736,26 @@ showTab("transaksi");
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
-                        <select id="pj-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        <select id="pj-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                             <option value="">-- Pilih Cabang --</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
-                        <input type="date" id="pj-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        <input type="date" id="pj-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                     </div>
                 </div>
                 <div id="items-container" class="space-y-3"></div>
-                <button type="button" id="btn-tambah-item" class="w-full py-2 border-2 border-dashed border-amber-400 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-50 transition">
+                <button type="button" id="btn-tambah-item" class="w-full py-2.5 border-2 border-dashed border-amber-400 text-amber-700 rounded-xl text-sm font-semibold hover:bg-amber-50 transition flex items-center justify-center gap-2">
                     <i class="fas fa-plus"></i> Tambah Item
                 </button>
-                <div class="bg-gray-50 rounded-lg p-4 space-y-2 border border-gray-100">
+                <div class="bg-gray-50 rounded-xl p-4 space-y-2 border border-gray-100">
                     <div class="flex justify-between text-sm"><span class="text-gray-500">Total Penjualan</span><span class="font-bold" id="preview-penjualan">Rp 0</span></div>
                     <div class="flex justify-between text-sm"><span class="text-gray-500">Total Modal</span><span class="font-bold text-red-500" id="preview-modal">Rp 0</span></div>
-                    <div class="border-t pt-2 flex justify-between text-sm font-bold text-green-600"><span>Untung Bersih</span><span id="preview-untung">Rp 0</span></div>
+                    <div class="border-t pt-2 flex justify-between text-sm font-bold text-emerald-600"><span>Untung Bersih</span><span id="preview-untung">Rp 0</span></div>
                 </div>
-                <button type="submit" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-lg font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-md">
-                    <i class="fas fa-save mr-1"></i> Simpan Transaksi
+                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Simpan Transaksi
                 </button>
             </form>
         </div>
@@ -489,20 +770,20 @@ showTab("transaksi");
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
-                        <select id="sh-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        <select id="sh-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                             <option value="">-- Pilih Cabang --</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
-                        <input type="date" id="sh-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        <input type="date" id="sh-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                     </div>
                 </div>
-                <div id="sh-produk-list" class="space-y-2 max-h-96 overflow-y-auto border border-gray-100 rounded-lg p-3 bg-white">
+                <div id="sh-produk-list" class="space-y-2 max-h-96 overflow-y-auto border border-gray-100 rounded-xl p-3 bg-white">
                     <p class="text-gray-400 text-sm text-center py-4">Pilih cabang dan tanggal untuk melihat produk</p>
                 </div>
-                <button type="submit" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-lg font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-md">
-                    <i class="fas fa-save mr-1"></i> Simpan Stok Harian
+                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Simpan Stok Harian
                 </button>
             </form>
         </div>
@@ -516,10 +797,10 @@ showTab("transaksi");
                 <form id="form-cabang" class="space-y-3">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Cabang / Lokasi</label>
-                        <input type="text" id="input-nama-cabang" placeholder="Contoh: Pasar Minggu, Tebet..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                        <input type="text" id="input-nama-cabang" placeholder="Contoh: Pasar Minggu, Tebet..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                     </div>
-                    <button type="submit" class="w-full py-2 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 transition">
-                        <i class="fas fa-plus mr-1"></i> Tambah Cabang
+                    <button type="submit" class="w-full py-2.5 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition shadow-md flex items-center justify-center gap-2">
+                        <i class="fas fa-plus"></i> Tambah Cabang
                     </button>
                 </form>
             </div>
@@ -544,20 +825,20 @@ showTab("transaksi");
                 <form id="form-produk" class="space-y-3">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Produk</label>
-                        <input type="text" id="prod-nama" placeholder="Contoh: Kopi Susu..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                        <input type="text" id="prod-nama" placeholder="Contoh: Kopi Susu..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual (Rp)</label>
-                            <input type="number" id="prod-harga" placeholder="15000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                            <input type="number" id="prod-harga" placeholder="15000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs (Rp)</label>
-                            <input type="number" id="prod-modal" placeholder="7000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required>
+                            <input type="number" id="prod-modal" placeholder="7000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                         </div>
                     </div>
-                    <button type="submit" class="w-full py-2 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 transition">
-                        <i class="fas fa-plus mr-1"></i> Tambah Produk
+                    <button type="submit" class="w-full py-2.5 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition shadow-md flex items-center justify-center gap-2">
+                        <i class="fas fa-plus"></i> Tambah Produk
                     </button>
                 </form>
             </div>
@@ -586,18 +867,18 @@ showTab("transaksi");
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
-                        <select id="md-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        <select id="md-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                             <option value="">-- Pilih Cabang --</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
-                        <input type="date" id="md-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        <input type="date" id="md-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                     </div>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Jenis Modal / Pengeluaran</label>
-                    <select id="md-jenis" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                    <select id="md-jenis" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                         <option value="Modal Awal Hari">Modal Awal Hari</option>
                         <option value="Bahan Baku - Kopi">Bahan Baku - Kopi</option>
                         <option value="Bahan Baku - Susu">Bahan Baku - Susu</option>
@@ -610,30 +891,58 @@ showTab("transaksi");
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Jumlah (Rp)</label>
-                    <input type="number" id="md-jumlah" placeholder="0" min="0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                    <input type="number" id="md-jumlah" placeholder="0" min="0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Keterangan</label>
-                    <textarea id="md-keterangan" rows="3" placeholder="Keterangan tambahan..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 resize-y"></textarea>
+                    <textarea id="md-keterangan" rows="3" placeholder="Keterangan tambahan..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 resize-y focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition"></textarea>
                 </div>
-                <button type="submit" class="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg font-bold hover:from-red-700 hover:to-red-800 transition shadow-md">
-                    <i class="fas fa-save mr-1"></i> Simpan Modal
+                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-bold hover:from-red-700 hover:to-red-800 transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Simpan Modal
                 </button>
             </form>
         </div>
     </div>
 </main>
 
-<!-- Custom Modal -->
-<div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-auto transform transition-all">
-        <div class="p-4 border-b border-gray-100">
+<!-- ===== CUSTOM ALERT MODAL ===== -->
+<div id="alert-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div id="alert-modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border p-6">
+        <div id="alert-icon-box" class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i id="alert-icon" class="fas text-3xl"></i>
+        </div>
+        <h3 id="alert-title" class="text-lg font-bold text-center"></h3>
+        <p id="alert-message" class="text-sm text-gray-600 text-center mt-2 leading-relaxed mb-6"></p>
+        <button id="alert-btn" class="w-full py-2.5 text-white rounded-xl font-bold text-sm transition shadow-md"></button>
+    </div>
+</div>
+
+<!-- ===== CUSTOM CONFIRM MODAL ===== -->
+<div id="confirm-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div id="confirm-modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100 p-6">
+        <div id="confirm-icon-box" class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i id="confirm-icon" class="fas text-3xl"></i>
+        </div>
+        <h3 id="confirm-title" class="text-lg font-bold text-center"></h3>
+        <p id="confirm-message" class="text-sm text-gray-600 text-center mt-2 leading-relaxed mb-6"></p>
+        <div class="flex gap-3">
+            <button id="confirm-btn-no" class="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition">Batal</button>
+            <button id="confirm-btn-yes" class="flex-1 py-2.5 text-white rounded-xl font-bold text-sm transition shadow-md"></button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== EDIT MODAL (existing) ===== -->
+<div id="custom-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100">
+        <div class="p-4 border-b border-gray-100 flex items-center gap-2">
+            <i class="fas fa-edit text-amber-600"></i>
             <h3 id="modal-title" class="font-bold text-amber-900 text-lg">Edit</h3>
         </div>
         <div id="modal-body" class="p-4"></div>
         <div class="p-4 flex gap-2 border-t border-gray-100">
-            <button onclick="closeModal()" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition">Batal</button>
-            <button id="modal-action" class="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition">Simpan</button>
+            <button onclick="closeModal()" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition">Batal</button>
+            <button id="modal-action" class="flex-1 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition shadow-md">Simpan</button>
         </div>
     </div>
 </div>
@@ -644,18 +953,8 @@ function closeModal() { $("custom-modal").classList.add("hidden"); }
 $("custom-modal").addEventListener("click", e => { if(e.target === $("custom-modal")) closeModal(); });
 </script>
 
+<!-- ===== TOAST NOTIFICATION ===== -->
+<div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 hidden flex items-center"></div>
 
-<!-- Toast Notification -->
-<div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-lg text-sm font-medium z-50 hidden transition-opacity duration-300"></div>
-
-<script>
-function showToast(msg, type="success") {
-    const t = $("toast");
-    t.textContent = msg;
-    t.className = `fixed bottom-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg text-sm font-medium z-50 transition-opacity duration-300 ${type==="error"?"bg-red-600":"bg-gray-900"} text-white`;
-    t.classList.remove("hidden");
-    setTimeout(() => { t.classList.add("hidden"); }, 3000);
-}
-</script>
 </body>
 </html>
