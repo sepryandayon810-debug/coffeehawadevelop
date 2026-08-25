@@ -6,6 +6,71 @@
 <title>Coffee Hawa - Report</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+/* ===== MODAL ANIMATIONS ===== */
+.modal-backdrop {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.modal-enter {
+    animation: modalFadeIn 0.25s ease-out forwards;
+}
+.modal-exit {
+    animation: modalFadeOut 0.2s ease-in forwards;
+}
+.modal-content-enter {
+    animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.modal-content-exit {
+    animation: modalSlideDown 0.2s ease-in forwards;
+}
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes modalFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(30px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes modalSlideDown {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to { opacity: 0; transform: translateY(20px) scale(0.95); }
+}
+
+/* ===== TOAST ANIMATIONS ===== */
+.toast-enter {
+    animation: toastSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.toast-exit {
+    animation: toastSlideDown 0.3s ease-in forwards;
+}
+@keyframes toastSlideUp {
+    from { opacity: 0; transform: translate(-50%, 20px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toastSlideDown {
+    from { opacity: 1; transform: translate(-50%, 0); }
+    to { opacity: 0; transform: translate(-50%, 20px); }
+}
+
+/* ===== SUMMARY CARDS ===== */
+.summary-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.summary-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+}
+
+/* ===== PROGRESS BAR ===== */
+.progress-bar {
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+</style>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, getDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -35,13 +100,133 @@ const fmtDate = t => {
 let allTransaksi = [], allModal = [], allStokHarian = [], cabangs = [];
 let currentTab = "penjualan";
 
-function getFilteredTransaksi(){
+// ======== CUSTOM POPUP SYSTEM ========
+window.showAlert = function({ title = "Informasi", message, type = "info", confirmText = "OK" }) {
+    const backdrop = $("alert-modal");
+    const content = $("alert-modal-content");
+    const iconBox = $("alert-icon-box");
+    const iconEl = $("alert-icon");
+    const titleEl = $("alert-title");
+    const msgEl = $("alert-message");
+    const btnEl = $("alert-btn");
+
+    const styles = {
+        success: { bg: "bg-emerald-50", border: "border-emerald-200", iconBg: "bg-emerald-100", iconColor: "text-emerald-600", btn: "bg-emerald-600 hover:bg-emerald-700", icon: "fa-check-circle" },
+        error:   { bg: "bg-red-50", border: "border-red-200", iconBg: "bg-red-100", iconColor: "text-red-600", btn: "bg-red-600 hover:bg-red-700", icon: "fa-times-circle" },
+        warning: { bg: "bg-amber-50", border: "border-amber-200", iconBg: "bg-amber-100", iconColor: "text-amber-600", btn: "bg-amber-600 hover:bg-amber-700", icon: "fa-exclamation-triangle" },
+        info:    { bg: "bg-blue-50", border: "border-blue-200", iconBg: "bg-blue-100", iconColor: "text-blue-600", btn: "bg-blue-600 hover:bg-blue-700", icon: "fa-info-circle" }
+    };
+    const s = styles[type] || styles.info;
+
+    content.className = `bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border ${s.border} ${s.bg}`;
+    iconBox.className = `w-16 h-16 rounded-full ${s.iconBg} flex items-center justify-center mx-auto mb-4 icon-pulse`;
+    iconEl.className = `fas ${s.icon} text-3xl ${s.iconColor}`;
+    titleEl.textContent = title;
+    titleEl.className = `text-lg font-bold text-center ${s.iconColor}`;
+    msgEl.textContent = message;
+    msgEl.className = "text-sm text-gray-600 text-center mt-2 leading-relaxed";
+    btnEl.className = `w-full py-2.5 ${s.btn} text-white rounded-xl font-bold text-sm transition shadow-md`;
+    btnEl.textContent = confirmText;
+
+    backdrop.classList.remove("hidden");
+    backdrop.classList.add("modal-enter");
+    content.classList.add("modal-content-enter");
+
+    btnEl.onclick = () => closeAlert();
+    backdrop.onclick = e => { if(e.target === backdrop) closeAlert(); };
+};
+
+window.closeAlert = function() {
+    const backdrop = $("alert-modal");
+    const content = $("alert-modal-content");
+    backdrop.classList.remove("modal-enter");
+    backdrop.classList.add("modal-exit");
+    content.classList.remove("modal-content-enter");
+    content.classList.add("modal-content-exit");
+    setTimeout(() => {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("modal-exit");
+        content.classList.remove("modal-content-exit");
+    }, 200);
+};
+
+window.showConfirm = function({ title = "Konfirmasi", message, type = "warning", confirmText = "Ya, Lanjutkan", cancelText = "Batal", onConfirm, onCancel }) {
+    const backdrop = $("confirm-modal");
+    const content = $("confirm-modal-content");
+    const iconBox = $("confirm-icon-box");
+    const iconEl = $("confirm-icon");
+    const titleEl = $("confirm-title");
+    const msgEl = $("confirm-message");
+    const btnConfirm = $("confirm-btn-yes");
+    const btnCancel = $("confirm-btn-no");
+
+    const styles = {
+        danger:  { iconBg: "bg-red-100", iconColor: "text-red-600", btn: "bg-red-600 hover:bg-red-700", icon: "fa-trash-alt" },
+        warning: { iconBg: "bg-amber-100", iconColor: "text-amber-600", btn: "bg-amber-600 hover:bg-amber-700", icon: "fa-exclamation-triangle" },
+        info:    { iconBg: "bg-blue-100", iconColor: "text-blue-600", btn: "bg-blue-600 hover:bg-blue-700", icon: "fa-question-circle" }
+    };
+    const s = styles[type] || styles.warning;
+
+    content.className = `bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100`;
+    iconBox.className = `w-16 h-16 rounded-full ${s.iconBg} flex items-center justify-center mx-auto mb-4 icon-pulse`;
+    iconEl.className = `fas ${s.icon} text-3xl ${s.iconColor}`;
+    titleEl.textContent = title;
+    titleEl.className = `text-lg font-bold text-center ${s.iconColor}`;
+    msgEl.textContent = message;
+    msgEl.className = "text-sm text-gray-600 text-center mt-2 leading-relaxed";
+    btnConfirm.className = `flex-1 py-2.5 ${s.btn} text-white rounded-xl font-bold text-sm transition shadow-md`;
+    btnConfirm.textContent = confirmText;
+    btnCancel.textContent = cancelText;
+
+    backdrop.classList.remove("hidden");
+    backdrop.classList.add("modal-enter");
+    content.classList.add("modal-content-enter");
+
+    btnConfirm.onclick = () => { closeConfirm(); if(onConfirm) onConfirm(); };
+    btnCancel.onclick = () => { closeConfirm(); if(onCancel) onCancel(); };
+    backdrop.onclick = e => { if(e.target === backdrop) { closeConfirm(); if(onCancel) onCancel(); } };
+};
+
+window.closeConfirm = function() {
+    const backdrop = $("confirm-modal");
+    const content = $("confirm-modal-content");
+    backdrop.classList.remove("modal-enter");
+    backdrop.classList.add("modal-exit");
+    content.classList.remove("modal-content-enter");
+    content.classList.add("modal-content-exit");
+    setTimeout(() => {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("modal-exit");
+        content.classList.remove("modal-content-exit");
+    }, 200);
+};
+
+window.showToast = function(msg, type="success") {
+    const t = $("toast");
+    const icon = type === "error" ? "fa-times-circle" : type === "warning" ? "fa-exclamation-circle" : "fa-check-circle";
+    const bg = type === "error" ? "bg-red-600" : type === "warning" ? "bg-amber-500" : "bg-emerald-600";
+    t.innerHTML = `<i class="fas ${icon} mr-2"></i>${msg}`;
+    t.className = `fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 ${bg} text-white toast-enter flex items-center`;
+    t.classList.remove("hidden");
+    setTimeout(() => {
+        t.classList.remove("toast-enter");
+        t.classList.add("toast-exit");
+        setTimeout(() => { t.classList.add("hidden"); t.classList.remove("toast-exit"); }, 300);
+    }, 3000);
+};
+
+function getFilterRange(){
     const cabang = $("filter-cabang").value;
     const dari = $("filter-dari").value;
     const sampai = $("filter-sampai").value;
     const dariDate = dari ? new Date(dari) : null;
     const sampaiDate = sampai ? new Date(sampai) : null;
     if(sampaiDate) sampaiDate.setHours(23,59,59);
+    return { cabang, dariDate, sampaiDate };
+}
+
+function getFilteredTransaksi(){
+    const { cabang, dariDate, sampaiDate } = getFilterRange();
     return allTransaksi.filter(t => {
         if(cabang !== "all" && t.cabang !== cabang) return false;
         const td = t.tanggal ? new Date(t.tanggal) : null;
@@ -52,12 +237,7 @@ function getFilteredTransaksi(){
 }
 
 function getFilteredModal(){
-    const cabang = $("filter-cabang").value;
-    const dari = $("filter-dari").value;
-    const sampai = $("filter-sampai").value;
-    const dariDate = dari ? new Date(dari) : null;
-    const sampaiDate = sampai ? new Date(sampai) : null;
-    if(sampaiDate) sampaiDate.setHours(23,59,59);
+    const { cabang, dariDate, sampaiDate } = getFilterRange();
     return allModal.filter(m => {
         if(cabang !== "all" && m.cabang !== cabang) return false;
         const md = m.tanggal ? new Date(m.tanggal) : null;
@@ -68,12 +248,7 @@ function getFilteredModal(){
 }
 
 function getFilteredStok(){
-    const cabang = $("filter-cabang").value;
-    const dari = $("filter-dari").value;
-    const sampai = $("filter-sampai").value;
-    const dariDate = dari ? new Date(dari) : null;
-    const sampaiDate = sampai ? new Date(sampai) : null;
-    if(sampaiDate) sampaiDate.setHours(23,59,59);
+    const { cabang, dariDate, sampaiDate } = getFilterRange();
     return allStokHarian.filter(s => {
         if(cabang !== "all" && s.cabang !== cabang) return false;
         const sd = s.tanggal ? new Date(s.tanggal) : null;
@@ -81,6 +256,89 @@ function getFilteredStok(){
         if(sampaiDate && sd > sampaiDate) return false;
         return true;
     }).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+}
+
+// ======== RANGKUMAN / REKAP ========
+function renderRangkuman(){
+    const ft = getFilteredTransaksi();
+    const fm = getFilteredModal();
+
+    let totalPenjualan = 0, totalModal = 0, totalQty = 0, totalTransaksi = ft.length;
+    ft.forEach(t => { totalPenjualan += t.totalPenjualan||0; totalQty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0); });
+    fm.forEach(m => { totalModal += m.jumlah||0; });
+    const labaBersih = totalPenjualan - totalModal;
+    const margin = totalPenjualan > 0 ? ((labaBersih / totalPenjualan) * 100).toFixed(1) : 0;
+
+    // Per cabang
+    const cabangStats = {};
+    cabangs.forEach(c => { cabangStats[c.nama] = { penjualan:0, modal:0, qty:0, transaksi:0 }; });
+    ft.forEach(t => {
+        if(!cabangStats[t.cabang]) cabangStats[t.cabang] = { penjualan:0, modal:0, qty:0, transaksi:0 };
+        cabangStats[t.cabang].penjualan += t.totalPenjualan||0;
+        cabangStats[t.cabang].qty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0);
+        cabangStats[t.cabang].transaksi += 1;
+    });
+    fm.forEach(m => {
+        if(!cabangStats[m.cabang]) cabangStats[m.cabang] = { penjualan:0, modal:0, qty:0, transaksi:0 };
+        cabangStats[m.cabang].modal += m.jumlah||0;
+    });
+
+    // Update summary cards
+    $("sum-penjualan").textContent = fmt(totalPenjualan);
+    $("sum-modal").textContent = fmt(totalModal);
+    $("sum-laba").textContent = fmt(labaBersih);
+    $("sum-margin").textContent = margin + "%";
+    $("sum-transaksi").textContent = totalTransaksi;
+    $("sum-qty").textContent = totalQty + " pcs";
+
+    // Color laba
+    const labaEl = $("sum-laba");
+    const labaCard = $("card-laba");
+    if(labaBersih >= 0) {
+        labaEl.className = "text-3xl font-black text-emerald-600";
+        labaCard.className = "summary-card bg-emerald-50 border border-emerald-200 rounded-2xl p-6 relative overflow-hidden";
+    } else {
+        labaEl.className = "text-3xl font-black text-red-600";
+        labaCard.className = "summary-card bg-red-50 border border-red-200 rounded-2xl p-6 relative overflow-hidden";
+    }
+
+    // Render per cabang table
+    const tbody = $("tbody-rangkuman");
+    const tfoot = $("tfoot-rangkuman");
+    const entries = Object.entries(cabangStats).filter(([_,v]) => v.penjualan > 0 || v.modal > 0).sort((a,b) => b[1].penjualan - a[1].penjualan);
+
+    if(!entries.length){
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">Tidak ada data dalam periode ini</td></tr>`;
+        tfoot.innerHTML = "";
+        return;
+    }
+
+    let totP=0, totM=0, totQ=0, totT=0;
+    tbody.innerHTML = entries.map(([nama, s]) => {
+        totP += s.penjualan; totM += s.modal; totQ += s.qty; totT += s.transaksi;
+        const laba = s.penjualan - s.modal;
+        const labaClass = laba >= 0 ? "text-emerald-600" : "text-red-600";
+        const badge = nama === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition">
+            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${nama}</span></td>
+            <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.transaksi}</td>
+            <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.qty}</td>
+            <td class="px-4 py-3 text-sm text-right font-bold text-amber-700">${fmt(s.penjualan)}</td>
+            <td class="px-4 py-3 text-sm text-right font-bold text-red-500">${fmt(s.modal)}</td>
+            <td class="px-4 py-3 text-sm text-right font-black ${labaClass}">${fmt(laba)}</td>
+        </tr>`;
+    }).join("");
+
+    const totLaba = totP - totM;
+    const totLabaClass = totLaba >= 0 ? "text-emerald-700" : "text-red-700";
+    tfoot.innerHTML = `<tr class="bg-gray-900 font-bold text-white">
+        <td class="px-4 py-3">TOTAL KESELURUHAN</td>
+        <td class="px-4 py-3 text-center">${totT}</td>
+        <td class="px-4 py-3 text-center">${totQ}</td>
+        <td class="px-4 py-3 text-right">${fmt(totP)}</td>
+        <td class="px-4 py-3 text-right text-red-300">${fmt(totM)}</td>
+        <td class="px-4 py-3 text-right ${totLabaClass}">${fmt(totLaba)}</td>
+    </tr>`;
 }
 
 function renderPenjualan(){
@@ -93,16 +351,16 @@ function renderPenjualan(){
         totJual += t.totalPenjualan||0; totModal += t.totalModal||0;
         const itemNames = (t.items||[]).map(i=>i.nama).join(", ");
         const badge = t.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition">
             <td class="px-4 py-3 text-sm">${fmtDate(t.tanggal)}</td>
             <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${t.cabang}</span></td>
             <td class="px-4 py-3 text-sm text-gray-700">${itemNames||"-"}</td>
             <td class="px-4 py-3 text-sm text-center">${(t.items||[]).reduce((a,i)=>a+(i.qty||0),0)}</td>
             <td class="px-4 py-3 text-sm text-right font-semibold">${fmt(t.totalPenjualan)}</td>
             <td class="px-4 py-3 text-sm text-right text-red-500">${fmt(t.totalModal)}</td>
-            <td class="px-4 py-3 text-sm text-right font-bold text-green-600">${fmt((t.totalPenjualan||0)-(t.totalModal||0))}</td>
+            <td class="px-4 py-3 text-sm text-right font-bold text-emerald-600">${fmt((t.totalPenjualan||0)-(t.totalModal||0))}</td>
             <td class="px-4 py-3 text-sm text-center">
-                <button onclick="hapusTransaksi('${t.id}')" class="text-red-500 hover:text-red-700" title="Hapus transaksi"><i class="fas fa-trash"></i></button>
+                <button onclick="hapusTransaksi('${t.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus transaksi"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`;
     }).join("");
@@ -110,7 +368,7 @@ function renderPenjualan(){
         <td colspan="4" class="px-4 py-3 text-right">TOTAL</td>
         <td class="px-4 py-3 text-right">${fmt(totJual)}</td>
         <td class="px-4 py-3 text-right text-red-600">${fmt(totModal)}</td>
-        <td class="px-4 py-3 text-right text-green-700">${fmt(totJual-totModal)}</td>
+        <td class="px-4 py-3 text-right text-emerald-700">${fmt(totJual-totModal)}</td>
         <td></td>
     </tr>`;
 }
@@ -127,12 +385,12 @@ function renderStokHarian(){
         totTidakLaku += tidakLaku;
         const badge = s.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
         const sisaClass = (s.sisa||0) <= 3 ? "text-red-600 font-bold" : "text-gray-700";
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition">
             <td class="px-4 py-3 text-sm">${fmtDate(s.tanggal)}</td>
             <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${s.cabang}</span></td>
             <td class="px-4 py-3 text-sm font-medium text-gray-800">${s.nama}</td>
             <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.stokAwal||0}</td>
-            <td class="px-4 py-3 text-sm text-center font-semibold text-green-600">${s.terjual||0}</td>
+            <td class="px-4 py-3 text-sm text-center font-semibold text-emerald-600">${s.terjual||0}</td>
             <td class="px-4 py-3 text-sm text-center font-bold ${sisaClass}">${s.sisa||0}</td>
             <td class="px-4 py-3 text-sm text-center text-gray-500">${tidakLaku}</td>
         </tr>`;
@@ -140,7 +398,7 @@ function renderStokHarian(){
     tfoot.innerHTML = `<tr class="bg-amber-50 font-bold text-amber-900">
         <td colspan="3" class="px-4 py-3 text-right">TOTAL</td>
         <td class="px-4 py-3 text-center">${totAwal}</td>
-        <td class="px-4 py-3 text-center text-green-700">${totJual}</td>
+        <td class="px-4 py-3 text-center text-emerald-700">${totJual}</td>
         <td class="px-4 py-3 text-center">${totSisa}</td>
         <td class="px-4 py-3 text-center text-gray-600">${totTidakLaku}</td>
     </tr>`;
@@ -155,14 +413,14 @@ function renderModal(){
     tbody.innerHTML = fm.map(m => {
         tot += m.jumlah||0;
         const badge = m.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition">
             <td class="px-4 py-3 text-sm">${fmtDate(m.tanggal)}</td>
             <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${m.cabang}</span></td>
             <td class="px-4 py-3 text-sm font-medium text-gray-700">${m.jenis}</td>
             <td class="px-4 py-3 text-sm text-right font-bold text-red-500">${fmt(m.jumlah)}</td>
             <td class="px-4 py-3 text-sm text-gray-500">${m.keterangan||"-"}</td>
             <td class="px-4 py-3 text-sm text-center">
-                <button onclick="hapusModal('${m.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+                <button onclick="hapusModal('${m.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`;
     }).join("");
@@ -174,25 +432,28 @@ function renderModal(){
 }
 
 function render(){
-    $("table-penjualan").classList.add("hidden");
-    $("table-stok").classList.add("hidden");
-    $("table-modal").classList.add("hidden");
-    $("tab-btn-penjualan").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
-    $("tab-btn-stok").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
-    $("tab-btn-modal").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+    ["penjualan","stok","modal","rangkuman"].forEach(t => {
+        $("table-"+t)?.classList.add("hidden");
+        const btn = $("tab-btn-"+t);
+        if(btn) btn.className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50 transition";
+    });
 
-    if(currentTab==="penjualan"){
+    if(currentTab==="rangkuman"){
+        renderRangkuman();
+        $("table-rangkuman").classList.remove("hidden");
+        $("tab-btn-rangkuman").className = "px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-md";
+    } else if(currentTab==="penjualan"){
         renderPenjualan();
         $("table-penjualan").classList.remove("hidden");
-        $("tab-btn-penjualan").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
+        $("tab-btn-penjualan").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold shadow-md";
     } else if(currentTab==="stok"){
         renderStokHarian();
         $("table-stok").classList.remove("hidden");
-        $("tab-btn-stok").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
+        $("tab-btn-stok").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold shadow-md";
     } else {
         renderModal();
         $("table-modal").classList.remove("hidden");
-        $("tab-btn-modal").className = "px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-bold";
+        $("tab-btn-modal").className = "px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-bold shadow-md";
     }
 }
 
@@ -209,6 +470,14 @@ $("btn-export").addEventListener("click", () => {
         const fs = getFilteredStok();
         csv += "Tanggal,Cabang,Produk,Stok Awal,Terjual,Sisa,Tidak Laku\n";
         fs.forEach(s => { csv+=`${s.tanggal},${s.cabang},${s.nama},${s.stokAwal||0},${s.terjual||0},${s.sisa||0},${(s.sisa||0)>0?(s.sisa||0):0}\n`; });
+    } else if(currentTab==="rangkuman"){
+        csv += "Cabang,Transaksi,Qty,Penjualan,Modal,Laba\n";
+        const ft = getFilteredTransaksi();
+        const fm = getFilteredModal();
+        const stats = {};
+        ft.forEach(t => { if(!stats[t.cabang]) stats[t.cabang]={p:0,m:0,q:0,t:0}; stats[t.cabang].p+=t.totalPenjualan||0; stats[t.cabang].q+=(t.items||[]).reduce((a,i)=>a+(i.qty||0),0); stats[t.cabang].t+=1; });
+        fm.forEach(m => { if(!stats[m.cabang]) stats[m.cabang]={p:0,m:0,q:0,t:0}; stats[m.cabang].m+=m.jumlah||0; });
+        Object.entries(stats).forEach(([k,v])=>{ csv+=`${k},${v.t},${v.q},${v.p},${v.m},${v.p-v.m}\n`; });
     } else {
         const fm = getFilteredModal();
         csv += "Tanggal,Cabang,Jenis,Jumlah,Keterangan\n";
@@ -221,31 +490,49 @@ $("btn-export").addEventListener("click", () => {
 });
 
 window.hapusTransaksi = async (id) => {
-    if(!confirm("Yakin hapus transaksi ini? Stok harian akan dikembalikan.")) return;
-    try {
-        const t = allTransaksi.find(x => x.id === id);
-        if(t && t.items){
-            for(const it of t.items){
-                if(it.stokDocId){
-                    const stokRef = doc(db, "stokHarian", it.stokDocId);
-                    const stokSnap = await getDoc(stokRef);
-                    if(stokSnap.exists()){
-                        const data = stokSnap.data();
-                        const newTerjual = Math.max(0, (data.terjual||0) - (it.qty||0));
-                        await updateDoc(stokRef, { terjual: newTerjual, sisa: (data.stokAwal||0) - newTerjual });
+    showConfirm({
+        title: "Hapus Transaksi?",
+        message: "Transaksi ini akan dihapus dan stok harian akan dikembalikan.",
+        type: "danger",
+        confirmText: "Ya, Hapus",
+        onConfirm: async () => {
+            try {
+                const t = allTransaksi.find(x => x.id === id);
+                if(t && t.items){
+                    for(const it of t.items){
+                        if(it.stokDocId){
+                            const stokRef = doc(db, "stokHarian", it.stokDocId);
+                            const stokSnap = await getDoc(stokRef);
+                            if(stokSnap.exists()){
+                                const data = stokSnap.data();
+                                const newTerjual = Math.max(0, (data.terjual||0) - (it.qty||0));
+                                await updateDoc(stokRef, { terjual: newTerjual, sisa: (data.stokAwal||0) - newTerjual });
+                            }
+                        }
                     }
                 }
-            }
+                await deleteDoc(doc(db,"transaksi",id));
+                showToast("Transaksi dihapus & stok harian dikembalikan!");
+            } catch(err){ showAlert({ title: "Gagal Menghapus", message: err.message, type: "error" }); }
         }
-        await deleteDoc(doc(db,"transaksi",id));
-        alert("✅ Transaksi dihapus & stok harian dikembalikan.");
-    } catch(err){ alert("❌ Gagal hapus: "+err.message); }
+    });
 };
 
 window.hapusModal = async (id) => {
-    if(!confirm("Yakin hapus data modal/pengeluaran ini?")) return;
-    try { await deleteDoc(doc(db,"modal",id)); alert("✅ Data modal dihapus."); }
-    catch(err){ alert("❌ Gagal hapus: "+err.message); }
+    showConfirm({
+        title: "Hapus Modal?",
+        message: "Data modal / pengeluaran ini akan dihapus secara permanen.",
+        type: "danger",
+        confirmText: "Ya, Hapus",
+        onConfirm: async () => {
+            try { 
+                await deleteDoc(doc(db,"modal",id)); 
+                showToast("Data modal dihapus!"); 
+            } catch(err){ 
+                showAlert({ title: "Gagal Menghapus", message: err.message, type: "error" }); 
+            }
+        }
+    });
 };
 
 onSnapshot(query(collection(db,"transaksi"), orderBy("createdAt","desc")), s => {
@@ -268,9 +555,10 @@ const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).to
 $("filter-dari").value = firstDay;
 $("filter-sampai").value = today;
 </script>
+<base target="_blank">
 </head>
 <body class="bg-amber-50 min-h-screen">
-<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-50">
+<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-3">
         <div class="flex items-center gap-3">
             <i class="fas fa-coffee text-2xl text-amber-300"></i>
@@ -287,36 +575,136 @@ $("filter-sampai").value = today;
 <main class="max-w-7xl mx-auto px-4 py-8">
     <div class="mb-6">
         <h2 class="text-2xl font-bold text-amber-900">Report Penjualan, Stok & Modal</h2>
-        <p class="text-gray-600 text-sm">Filter, hapus, dan export laporan</p>
+        <p class="text-gray-600 text-sm">Filter, hapus, export laporan, dan lihat rangkuman laba rugi</p>
     </div>
 
+    <!-- Filter Bar -->
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div class="flex-1 min-w-[140px]">
             <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
-            <select id="filter-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+            <select id="filter-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
                 <option value="all">Semua Cabang</option>
             </select>
         </div>
         <div class="flex-1 min-w-[140px]">
             <label class="block text-xs font-semibold text-gray-600 mb-1">Dari Tanggal</label>
-            <input type="date" id="filter-dari" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+            <input type="date" id="filter-dari" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
         </div>
         <div class="flex-1 min-w-[140px]">
             <label class="block text-xs font-semibold text-gray-600 mb-1">Sampai Tanggal</label>
-            <input type="date" id="filter-sampai" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+            <input type="date" id="filter-sampai" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
         </div>
-        <button id="btn-filter" class="px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition"><i class="fas fa-search"></i> Filter</button>
-        <button id="btn-export" class="px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition"><i class="fas fa-download"></i> Export CSV</button>
+        <button id="btn-filter" class="px-5 py-2.5 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition shadow-md flex items-center gap-2">
+            <i class="fas fa-search"></i> Filter
+        </button>
+        <button id="btn-export" class="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-md flex items-center gap-2">
+            <i class="fas fa-download"></i> Export CSV
+        </button>
     </div>
 
-    <div class="flex gap-2 mb-4">
-        <button id="tab-btn-penjualan" onclick="switchReportTab('penjualan')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-chart-bar mr-1"></i> Penjualan</button>
-        <button id="tab-btn-stok" onclick="switchReportTab('stok')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-boxes mr-1"></i> Stok Harian</button>
-        <button id="tab-btn-modal" onclick="switchReportTab('modal')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-wallet mr-1"></i> Modal</button>
+    <!-- Tab Buttons -->
+    <div class="flex gap-2 mb-4 flex-wrap">
+        <button id="tab-btn-rangkuman" onclick="switchReportTab('rangkuman')" class="px-5 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1">
+            <i class="fas fa-chart-pie"></i> Rangkuman
+        </button>
+        <button id="tab-btn-penjualan" onclick="switchReportTab('penjualan')" class="px-5 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1">
+            <i class="fas fa-chart-bar"></i> Penjualan
+        </button>
+        <button id="tab-btn-stok" onclick="switchReportTab('stok')" class="px-5 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1">
+            <i class="fas fa-boxes"></i> Stok Harian
+        </button>
+        <button id="tab-btn-modal" onclick="switchReportTab('modal')" class="px-5 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1">
+            <i class="fas fa-wallet"></i> Modal
+        </button>
+    </div>
+
+    <!-- ===== TAB RANGKUMAN / REKAP ===== -->
+    <div id="table-rangkuman" class="hidden space-y-6">
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="summary-card bg-white border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-coins text-5xl text-amber-600"></i></div>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Penjualan</p>
+                <p id="sum-penjualan" class="text-3xl font-black text-amber-700">Rp 0</p>
+                <p class="text-xs text-gray-400 mt-1">Omzet kotor periode ini</p>
+            </div>
+            <div class="summary-card bg-white border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-wallet text-5xl text-red-600"></i></div>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Modal</p>
+                <p id="sum-modal" class="text-3xl font-black text-red-600">Rp 0</p>
+                <p class="text-xs text-gray-400 mt-1">Pengeluaran & modal periode ini</p>
+            </div>
+            <div id="card-laba" class="summary-card bg-emerald-50 border border-emerald-200 rounded-2xl p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-chart-line text-5xl text-emerald-600"></i></div>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Laba Bersih</p>
+                <p id="sum-laba" class="text-3xl font-black text-emerald-600">Rp 0</p>
+                <p class="text-xs text-gray-400 mt-1">Penjualan - Modal</p>
+            </div>
+            <div class="summary-card bg-white border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-percentage text-5xl text-blue-600"></i></div>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Margin</p>
+                <p id="sum-margin" class="text-3xl font-black text-blue-600">0%</p>
+                <p class="text-xs text-gray-400 mt-1">Rasio laba terhadap penjualan</p>
+            </div>
+        </div>
+
+        <!-- Secondary Stats -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center"><i class="fas fa-receipt text-amber-600"></i></div>
+                <div>
+                    <p class="text-xs text-gray-500 font-semibold">Total Transaksi</p>
+                    <p id="sum-transaksi" class="text-lg font-bold text-gray-800">0</p>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center"><i class="fas fa-box text-emerald-600"></i></div>
+                <div>
+                    <p class="text-xs text-gray-500 font-semibold">Total Qty Terjual</p>
+                    <p id="sum-qty" class="text-lg font-bold text-gray-800">0 pcs</p>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center"><i class="fas fa-store text-blue-600"></i></div>
+                <div>
+                    <p class="text-xs text-gray-500 font-semibold">Cabang Aktif</p>
+                    <p class="text-lg font-bold text-gray-800">${cabangs.length || 0}</p>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center"><i class="fas fa-calendar-alt text-purple-600"></i></div>
+                <div>
+                    <p class="text-xs text-gray-500 font-semibold">Periode</p>
+                    <p id="sum-periode" class="text-lg font-bold text-gray-800">-</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detail Table per Cabang -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+            <div class="p-4 border-b border-gray-100 flex items-center gap-2">
+                <i class="fas fa-table text-emerald-600"></i>
+                <h3 class="font-bold text-gray-800">Detail Laba Rugi per Cabang</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="bg-gray-50">
+                        <th class="px-4 py-3 text-left font-bold text-gray-700">Cabang</th>
+                        <th class="px-4 py-3 text-center font-bold text-gray-700">Transaksi</th>
+                        <th class="px-4 py-3 text-center font-bold text-gray-700">Qty</th>
+                        <th class="px-4 py-3 text-right font-bold text-gray-700">Penjualan</th>
+                        <th class="px-4 py-3 text-right font-bold text-gray-700">Modal</th>
+                        <th class="px-4 py-3 text-right font-bold text-gray-700">Laba</th>
+                    </tr></thead>
+                    <tbody id="tbody-rangkuman"></tbody>
+                    <tfoot id="tfoot-rangkuman"></tfoot>
+                </table>
+            </div>
+        </div>
     </div>
 
     <!-- Tabel Penjualan -->
-    <div id="table-penjualan" class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div id="table-penjualan" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="bg-amber-100">
@@ -372,5 +760,36 @@ $("filter-sampai").value = today;
         </div>
     </div>
 </main>
+
+<!-- ===== CUSTOM ALERT MODAL ===== -->
+<div id="alert-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div id="alert-modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border p-6">
+        <div id="alert-icon-box" class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i id="alert-icon" class="fas text-3xl"></i>
+        </div>
+        <h3 id="alert-title" class="text-lg font-bold text-center"></h3>
+        <p id="alert-message" class="text-sm text-gray-600 text-center mt-2 leading-relaxed mb-6"></p>
+        <button id="alert-btn" class="w-full py-2.5 text-white rounded-xl font-bold text-sm transition shadow-md"></button>
+    </div>
+</div>
+
+<!-- ===== CUSTOM CONFIRM MODAL ===== -->
+<div id="confirm-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div id="confirm-modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100 p-6">
+        <div id="confirm-icon-box" class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i id="confirm-icon" class="fas text-3xl"></i>
+        </div>
+        <h3 id="confirm-title" class="text-lg font-bold text-center"></h3>
+        <p id="confirm-message" class="text-sm text-gray-600 text-center mt-2 leading-relaxed mb-6"></p>
+        <div class="flex gap-3">
+            <button id="confirm-btn-no" class="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition">Batal</button>
+            <button id="confirm-btn-yes" class="flex-1 py-2.5 text-white rounded-xl font-bold text-sm transition shadow-md"></button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TOAST NOTIFICATION ===== -->
+<div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 hidden flex items-center"></div>
+
 </body>
 </html>
