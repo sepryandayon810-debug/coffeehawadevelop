@@ -3,12 +3,100 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coffee Hawa - Report</title>
+<title>Coffee Hawa - Input Penjualan</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+.tab-active{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-weight:700}
+.tab-inactive{background:#fff;color:#57534e;border:1px solid #e7e5e4}
+
+/* ===== MODAL ANIMATIONS ===== */
+.modal-backdrop {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.modal-enter {
+    animation: modalFadeIn 0.25s ease-out forwards;
+}
+.modal-exit {
+    animation: modalFadeOut 0.2s ease-in forwards;
+}
+.modal-content-enter {
+    animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.modal-content-exit {
+    animation: modalSlideDown 0.2s ease-in forwards;
+}
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes modalFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(30px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes modalSlideDown {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to { opacity: 0; transform: translateY(20px) scale(0.95); }
+}
+
+/* ===== TOAST ANIMATIONS ===== */
+.toast-enter {
+    animation: toastSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.toast-exit {
+    animation: toastSlideDown 0.3s ease-in forwards;
+}
+@keyframes toastSlideUp {
+    from { opacity: 0; transform: translate(-50%, 20px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toastSlideDown {
+    from { opacity: 1; transform: translate(-50%, 0); }
+    to { opacity: 0; transform: translate(-50%, 20px); }
+}
+
+/* ===== LOADING SPINNER ===== */
+.btn-loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    top: 50%;
+    left: 50%;
+    margin-left: -9px;
+    margin-top: -9px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ===== ICON PULSE ===== */
+.icon-pulse {
+    animation: iconPulse 0.5s ease-out;
+}
+@keyframes iconPulse {
+    0% { transform: scale(0.5); opacity: 0; }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); opacity: 1; }
+}
+</style>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, getDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, serverTimestamp, query, orderBy, where, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDvsXZJLqGdCfVLILx6clV4ANUpYO-aHIw",
@@ -25,252 +113,591 @@ const db = getFirestore(app);
 
 const $ = id => document.getElementById(id);
 const fmt = n => "Rp " + (n||0).toLocaleString("id-ID");
-const fmtDate = t => {
-    if(!t) return "-";
-    if(typeof t === "string") return new Date(t).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
-    if(t.toDate) return t.toDate().toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
-    return "-";
+
+let cabangs = [], produks = [], stokHarian = [];
+
+// ======== CUSTOM MODAL SYSTEM ========
+window.showAlert = function({ title = "Informasi", message, type = "info", confirmText = "OK" }) {
+    const backdrop = $("alert-modal");
+    const content = $("alert-modal-content");
+    const iconBox = $("alert-icon-box");
+    const iconEl = $("alert-icon");
+    const titleEl = $("alert-title");
+    const msgEl = $("alert-message");
+    const btnEl = $("alert-btn");
+
+    // Type styling
+    const styles = {
+        success: { bg: "bg-emerald-50", border: "border-emerald-200", iconBg: "bg-emerald-100", iconColor: "text-emerald-600", btn: "bg-emerald-600 hover:bg-emerald-700", icon: "fa-check-circle" },
+        error:   { bg: "bg-red-50", border: "border-red-200", iconBg: "bg-red-100", iconColor: "text-red-600", btn: "bg-red-600 hover:bg-red-700", icon: "fa-times-circle" },
+        warning: { bg: "bg-amber-50", border: "border-amber-200", iconBg: "bg-amber-100", iconColor: "text-amber-600", btn: "bg-amber-600 hover:bg-amber-700", icon: "fa-exclamation-triangle" },
+        info:    { bg: "bg-blue-50", border: "border-blue-200", iconBg: "bg-blue-100", iconColor: "text-blue-600", btn: "bg-blue-600 hover:bg-blue-700", icon: "fa-info-circle" }
+    };
+    const s = styles[type] || styles.info;
+
+    content.className = `bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border ${s.border} ${s.bg}`;
+    iconBox.className = `w-16 h-16 rounded-full ${s.iconBg} flex items-center justify-center mx-auto mb-4 icon-pulse`;
+    iconEl.className = `fas ${s.icon} text-3xl ${s.iconColor}`;
+    titleEl.textContent = title;
+    titleEl.className = `text-lg font-bold text-center ${s.iconColor}`;
+    msgEl.textContent = message;
+    msgEl.className = "text-sm text-gray-600 text-center mt-2 leading-relaxed";
+    btnEl.className = `w-full py-2.5 ${s.btn} text-white rounded-xl font-bold text-sm transition shadow-md`;
+    btnEl.textContent = confirmText;
+
+    backdrop.classList.remove("hidden");
+    backdrop.classList.add("modal-enter");
+    content.classList.add("modal-content-enter");
+
+    btnEl.onclick = () => closeAlert();
+    backdrop.onclick = e => { if(e.target === backdrop) closeAlert(); };
 };
 
-let allTransaksi = [], allModal = [], allStokHarian = [], cabangs = [];
-let currentTab = "penjualan";
+window.closeAlert = function() {
+    const backdrop = $("alert-modal");
+    const content = $("alert-modal-content");
+    backdrop.classList.remove("modal-enter");
+    backdrop.classList.add("modal-exit");
+    content.classList.remove("modal-content-enter");
+    content.classList.add("modal-content-exit");
+    setTimeout(() => {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("modal-exit");
+        content.classList.remove("modal-content-exit");
+    }, 200);
+};
 
-function getFilteredTransaksi(){
-    const cabang = $("filter-cabang").value;
-    const dari = $("filter-dari").value;
-    const sampai = $("filter-sampai").value;
-    const dariDate = dari ? new Date(dari) : null;
-    const sampaiDate = sampai ? new Date(sampai) : null;
-    if(sampaiDate) sampaiDate.setHours(23,59,59);
-    return allTransaksi.filter(t => {
-        if(cabang !== "all" && t.cabang !== cabang) return false;
-        const td = t.tanggal ? new Date(t.tanggal) : null;
-        if(dariDate && td < dariDate) return false;
-        if(sampaiDate && td > sampaiDate) return false;
-        return true;
+window.showConfirm = function({ title = "Konfirmasi", message, type = "warning", confirmText = "Ya, Lanjutkan", cancelText = "Batal", onConfirm, onCancel }) {
+    const backdrop = $("confirm-modal");
+    const content = $("confirm-modal-content");
+    const iconBox = $("confirm-icon-box");
+    const iconEl = $("confirm-icon");
+    const titleEl = $("confirm-title");
+    const msgEl = $("confirm-message");
+    const btnConfirm = $("confirm-btn-yes");
+    const btnCancel = $("confirm-btn-no");
+
+    const styles = {
+        danger:  { iconBg: "bg-red-100", iconColor: "text-red-600", btn: "bg-red-600 hover:bg-red-700", icon: "fa-trash-alt" },
+        warning: { iconBg: "bg-amber-100", iconColor: "text-amber-600", btn: "bg-amber-600 hover:bg-amber-700", icon: "fa-exclamation-triangle" },
+        info:    { iconBg: "bg-blue-100", iconColor: "text-blue-600", btn: "bg-blue-600 hover:bg-blue-700", icon: "fa-question-circle" }
+    };
+    const s = styles[type] || styles.warning;
+
+    content.className = `bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100`;
+    iconBox.className = `w-16 h-16 rounded-full ${s.iconBg} flex items-center justify-center mx-auto mb-4 icon-pulse`;
+    iconEl.className = `fas ${s.icon} text-3xl ${s.iconColor}`;
+    titleEl.textContent = title;
+    titleEl.className = `text-lg font-bold text-center ${s.iconColor}`;
+    msgEl.textContent = message;
+    msgEl.className = "text-sm text-gray-600 text-center mt-2 leading-relaxed";
+    btnConfirm.className = `flex-1 py-2.5 ${s.btn} text-white rounded-xl font-bold text-sm transition shadow-md`;
+    btnConfirm.textContent = confirmText;
+    btnCancel.textContent = cancelText;
+
+    backdrop.classList.remove("hidden");
+    backdrop.classList.add("modal-enter");
+    content.classList.add("modal-content-enter");
+
+    btnConfirm.onclick = () => {
+        closeConfirm();
+        if(onConfirm) onConfirm();
+    };
+    btnCancel.onclick = () => {
+        closeConfirm();
+        if(onCancel) onCancel();
+    };
+    backdrop.onclick = e => { if(e.target === backdrop) { closeConfirm(); if(onCancel) onCancel(); } };
+};
+
+window.closeConfirm = function() {
+    const backdrop = $("confirm-modal");
+    const content = $("confirm-modal-content");
+    backdrop.classList.remove("modal-enter");
+    backdrop.classList.add("modal-exit");
+    content.classList.remove("modal-content-enter");
+    content.classList.add("modal-content-exit");
+    setTimeout(() => {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("modal-exit");
+        content.classList.remove("modal-content-exit");
+    }, 200);
+};
+
+window.showToast = function(msg, type="success") {
+    const t = $("toast");
+    const icon = type === "error" ? "fa-times-circle" : type === "warning" ? "fa-exclamation-circle" : "fa-check-circle";
+    const bg = type === "error" ? "bg-red-600" : type === "warning" ? "bg-amber-500" : "bg-emerald-600";
+    t.innerHTML = `<i class="fas ${icon} mr-2"></i>${msg}`;
+    t.className = `fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 ${bg} text-white toast-enter flex items-center`;
+    t.classList.remove("hidden");
+    setTimeout(() => {
+        t.classList.remove("toast-enter");
+        t.classList.add("toast-exit");
+        setTimeout(() => {
+            t.classList.add("hidden");
+            t.classList.remove("toast-exit");
+        }, 300);
+    }, 3000);
+};
+
+// ======== TAB SWITCHER ========
+window.showTab = function(tab){
+    ["transaksi","stokharian","cabang","produk","modal"].forEach(t => {
+        $("tab-"+t).classList.add("hidden");
+        const btn = $("btn-"+t);
+        btn.className = t===tab ? "px-4 py-2 rounded-lg text-sm tab-active transition" : "px-4 py-2 rounded-lg text-sm tab-inactive hover:bg-gray-50 transition";
     });
-}
+    $("tab-"+tab).classList.remove("hidden");
+};
 
-function getFilteredModal(){
-    const cabang = $("filter-cabang").value;
-    const dari = $("filter-dari").value;
-    const sampai = $("filter-sampai").value;
-    const dariDate = dari ? new Date(dari) : null;
-    const sampaiDate = sampai ? new Date(sampai) : null;
-    if(sampaiDate) sampaiDate.setHours(23,59,59);
-    return allModal.filter(m => {
-        if(cabang !== "all" && m.cabang !== cabang) return false;
-        const md = m.tanggal ? new Date(m.tanggal) : null;
-        if(dariDate && md < dariDate) return false;
-        if(sampaiDate && md > sampaiDate) return false;
-        return true;
-    });
-}
-
-function getFilteredStok(){
-    const cabang = $("filter-cabang").value;
-    const dari = $("filter-dari").value;
-    const sampai = $("filter-sampai").value;
-    const dariDate = dari ? new Date(dari) : null;
-    const sampaiDate = sampai ? new Date(sampai) : null;
-    if(sampaiDate) sampaiDate.setHours(23,59,59);
-    return allStokHarian.filter(s => {
-        if(cabang !== "all" && s.cabang !== cabang) return false;
-        const sd = s.tanggal ? new Date(s.tanggal) : null;
-        if(dariDate && sd < dariDate) return false;
-        if(sampaiDate && sd > sampaiDate) return false;
-        return true;
-    }).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
-}
-
-function renderPenjualan(){
-    const ft = getFilteredTransaksi();
-    const tbody = $("tbody-penjualan");
-    const tfoot = $("tfoot-penjualan");
-    if(!ft.length){ tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-gray-400">Tidak ada data transaksi</td></tr>`; tfoot.innerHTML=""; return; }
-    let totJual=0, totModal=0;
-    tbody.innerHTML = ft.map(t => {
-        totJual += t.totalPenjualan||0; totModal += t.totalModal||0;
-        const itemNames = (t.items||[]).map(i=>i.nama).join(", ");
-        const badge = t.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-4 py-3 text-sm">${fmtDate(t.tanggal)}</td>
-            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${t.cabang}</span></td>
-            <td class="px-4 py-3 text-sm text-gray-700">${itemNames||"-"}</td>
-            <td class="px-4 py-3 text-sm text-center">${(t.items||[]).reduce((a,i)=>a+(i.qty||0),0)}</td>
-            <td class="px-4 py-3 text-sm text-right font-semibold">${fmt(t.totalPenjualan)}</td>
-            <td class="px-4 py-3 text-sm text-right text-red-500">${fmt(t.totalModal)}</td>
-            <td class="px-4 py-3 text-sm text-right font-bold text-green-600">${fmt((t.totalPenjualan||0)-(t.totalModal||0))}</td>
-            <td class="px-4 py-3 text-sm text-center">
-                <button onclick="hapusTransaksi('${t.id}')" class="text-red-500 hover:text-red-700" title="Hapus transaksi"><i class="fas fa-trash"></i></button>
-            </td>
-        </tr>`;
-    }).join("");
-    tfoot.innerHTML = `<tr class="bg-amber-50 font-bold text-amber-900">
-        <td colspan="4" class="px-4 py-3 text-right">TOTAL</td>
-        <td class="px-4 py-3 text-right">${fmt(totJual)}</td>
-        <td class="px-4 py-3 text-right text-red-600">${fmt(totModal)}</td>
-        <td class="px-4 py-3 text-right text-green-700">${fmt(totJual-totModal)}</td>
-        <td></td>
-    </tr>`;
-}
-
-function renderStokHarian(){
-    const fs = getFilteredStok();
-    const tbody = $("tbody-stok");
-    const tfoot = $("tfoot-stok");
-    if(!fs.length){ tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400">Tidak ada data stok harian</td></tr>`; tfoot.innerHTML=""; return; }
-    let totAwal=0, totJual=0, totSisa=0, totTidakLaku=0;
-    tbody.innerHTML = fs.map(s => {
-        totAwal += s.stokAwal||0; totJual += s.terjual||0; totSisa += s.sisa||0;
-        const tidakLaku = (s.sisa||0) > 0 ? (s.sisa||0) : 0;
-        totTidakLaku += tidakLaku;
-        const badge = s.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
-        const sisaClass = (s.sisa||0) <= 3 ? "text-red-600 font-bold" : "text-gray-700";
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-4 py-3 text-sm">${fmtDate(s.tanggal)}</td>
-            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${s.cabang}</span></td>
-            <td class="px-4 py-3 text-sm font-medium text-gray-800">${s.nama}</td>
-            <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.stokAwal||0}</td>
-            <td class="px-4 py-3 text-sm text-center font-semibold text-green-600">${s.terjual||0}</td>
-            <td class="px-4 py-3 text-sm text-center font-bold ${sisaClass}">${s.sisa||0}</td>
-            <td class="px-4 py-3 text-sm text-center text-gray-500">${tidakLaku}</td>
-        </tr>`;
-    }).join("");
-    tfoot.innerHTML = `<tr class="bg-amber-50 font-bold text-amber-900">
-        <td colspan="3" class="px-4 py-3 text-right">TOTAL</td>
-        <td class="px-4 py-3 text-center">${totAwal}</td>
-        <td class="px-4 py-3 text-center text-green-700">${totJual}</td>
-        <td class="px-4 py-3 text-center">${totSisa}</td>
-        <td class="px-4 py-3 text-center text-gray-600">${totTidakLaku}</td>
-    </tr>`;
-}
-
-function renderModal(){
-    const fm = getFilteredModal();
-    const tbody = $("tbody-modal");
-    const tfoot = $("tfoot-modal");
-    if(!fm.length){ tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">Tidak ada data modal/pengeluaran</td></tr>`; tfoot.innerHTML=""; return; }
-    let tot=0;
-    tbody.innerHTML = fm.map(m => {
-        tot += m.jumlah||0;
-        const badge = m.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="px-4 py-3 text-sm">${fmtDate(m.tanggal)}</td>
-            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${m.cabang}</span></td>
-            <td class="px-4 py-3 text-sm font-medium text-gray-700">${m.jenis}</td>
-            <td class="px-4 py-3 text-sm text-right font-bold text-red-500">${fmt(m.jumlah)}</td>
-            <td class="px-4 py-3 text-sm text-gray-500">${m.keterangan||"-"}</td>
-            <td class="px-4 py-3 text-sm text-center">
-                <button onclick="hapusModal('${m.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
-            </td>
-        </tr>`;
-    }).join("");
-    tfoot.innerHTML = `<tr class="bg-red-50 font-bold text-red-900">
-        <td colspan="3" class="px-4 py-3 text-right">TOTAL PENGELUARAN</td>
-        <td class="px-4 py-3 text-right">${fmt(tot)}</td>
-        <td colspan="2"></td>
-    </tr>`;
-}
-
-function render(){
-    $("table-penjualan").classList.add("hidden");
-    $("table-stok").classList.add("hidden");
-    $("table-modal").classList.add("hidden");
-    $("tab-btn-penjualan").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
-    $("tab-btn-stok").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
-    $("tab-btn-modal").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
-
-    if(currentTab==="penjualan"){
-        renderPenjualan();
-        $("table-penjualan").classList.remove("hidden");
-        $("tab-btn-penjualan").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
-    } else if(currentTab==="stok"){
-        renderStokHarian();
-        $("table-stok").classList.remove("hidden");
-        $("tab-btn-stok").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
-    } else {
-        renderModal();
-        $("table-modal").classList.remove("hidden");
-        $("tab-btn-modal").className = "px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-bold";
+// ======== CABANG CRUD ========
+$("form-cabang").addEventListener("submit", async e => {
+    e.preventDefault();
+    const nama = $("input-nama-cabang").value.trim();
+    if(!nama) {
+        showAlert({ title: "Validasi Gagal", message: "Nama cabang tidak boleh kosong!", type: "warning" });
+        return;
     }
-}
-
-window.switchReportTab = t => { currentTab = t; render(); };
-$("btn-filter").addEventListener("click", render);
-
-$("btn-export").addEventListener("click", () => {
-    let csv = "Coffee Hawa - Report\n";
-    if(currentTab==="penjualan"){
-        const ft = getFilteredTransaksi();
-        csv += "Tanggal,Cabang,Item,Qty,Penjualan,Modal,Untung\n";
-        ft.forEach(t => { const items=(t.items||[]).map(i=>i.nama).join("; "); const qty=(t.items||[]).reduce((a,i)=>a+(i.qty||0),0); csv+=`${t.tanggal},${t.cabang},"${items}",${qty},${t.totalPenjualan||0},${t.totalModal||0},${(t.totalPenjualan||0)-(t.totalModal||0)}\n`; });
-    } else if(currentTab==="stok"){
-        const fs = getFilteredStok();
-        csv += "Tanggal,Cabang,Produk,Stok Awal,Terjual,Sisa,Tidak Laku\n";
-        fs.forEach(s => { csv+=`${s.tanggal},${s.cabang},${s.nama},${s.stokAwal||0},${s.terjual||0},${s.sisa||0},${(s.sisa||0)>0?(s.sisa||0):0}\n`; });
-    } else {
-        const fm = getFilteredModal();
-        csv += "Tanggal,Cabang,Jenis,Jumlah,Keterangan\n";
-        fm.forEach(m => csv+=`${m.tanggal},${m.cabang},${m.jenis},${m.jumlah||0},"${m.keterangan||""}"\n`);
-    }
-    const blob = new Blob([csv],{type:"text/csv"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `coffee-hawa-${currentTab}-${new Date().toISOString().split("T")[0]}.csv`; a.click(); URL.revokeObjectURL(url);
+    await addDoc(collection(db,"cabang"), { nama, createdAt: serverTimestamp() });
+    $("input-nama-cabang").value = "";
+    showToast("Cabang berhasil ditambahkan!");
 });
 
-window.hapusTransaksi = async (id) => {
-    if(!confirm("Yakin hapus transaksi ini? Stok harian akan dikembalikan.")) return;
+function renderCabangs(){
+    const tbody = $("tbody-cabang");
+    if(!cabangs.length){ tbody.innerHTML = `<tr><td colspan="3" class="text-center py-4 text-gray-400 text-sm">Belum ada cabang</td></tr>`; return; }
+    tbody.innerHTML = cabangs.map(c => `
+        <tr class="border-b border-gray-100">
+            <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.nama}</td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono text-xs">${c.id}</td>
+            <td class="px-4 py-3 text-sm">
+                <button onclick="editCabang('${c.id}','${c.nama}')" class="text-blue-600 hover:text-blue-800 mr-2 transition" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="hapusCabang('${c.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join("");
+    const ops = `<option value="">-- Pilih Cabang --</option>` + cabangs.map(c => `<option value="${c.nama}">${c.nama}</option>`).join("");
+    $("pj-cabang").innerHTML = ops;
+    $("md-cabang").innerHTML = ops;
+    $("sh-cabang").innerHTML = ops;
+}
+window.editCabang = function(id, oldName) {
+    $("modal-title").textContent = "Edit Cabang";
+    $("modal-body").innerHTML = `
+        <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Cabang</label>
+        <input type="text" id="modal-input" value="${oldName}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" autofocus>
+    `;
+    $("modal-action").onclick = async () => {
+        const baru = $("modal-input").value.trim();
+        if(baru) {
+            await updateDoc(doc(db,"cabang",id), { nama: baru });
+            closeModal();
+            showToast("Cabang berhasil diperbarui!");
+        }
+    };
+    openModal();
+};
+window.hapusCabang = async (id) => {
+    showConfirm({
+        title: "Hapus Cabang?",
+        message: "Cabang ini akan dihapus secara permanen. Data transaksi lama tidak akan terpengaruh.",
+        type: "danger",
+        confirmText: "Ya, Hapus",
+        onConfirm: async () => {
+            await deleteDoc(doc(db,"cabang",id));
+            showToast("Cabang berhasil dihapus!");
+        }
+    });
+};
+
+// ======== PRODUK MASTER CRUD ========
+$("form-produk").addEventListener("submit", async e => {
+    e.preventDefault();
+    const nama = $("prod-nama").value.trim();
+    const harga = parseInt($("prod-harga").value)||0;
+    const modal = parseInt($("prod-modal").value)||0;
+    if(!nama) {
+        showAlert({ title: "Validasi Gagal", message: "Nama produk wajib diisi!", type: "warning" });
+        return;
+    }
+    await addDoc(collection(db,"produk"), { nama, hargaJual: harga, modalPerPcs: modal, createdAt: serverTimestamp() });
+    $("form-produk").reset();
+    showToast("Produk berhasil ditambahkan!");
+});
+
+function renderProduks(){
+    const tbody = $("tbody-produk");
+    if(!produks.length){ tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-400 text-sm">Belum ada produk</td></tr>`; return; }
+    tbody.innerHTML = produks.map(p => `
+        <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
+            <td class="px-4 py-3 text-sm font-medium text-gray-800">${p.nama}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">${fmt(p.hargaJual)}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">${fmt(p.modalPerPcs)}</td>
+            <td class="px-4 py-3 text-sm">
+                <button onclick="editProduk('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2 transition" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="hapusProduk('${p.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join("");
+}
+
+window.editProduk = function(id) {
+    const p = produks.find(x => x.id === id);
+    if(!p) return;
+    $("modal-title").textContent = "Edit Produk";
+    $("modal-body").innerHTML = `
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Produk</label>
+                <input type="text" id="modal-nama" value="${p.nama}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual</label>
+                    <input type="number" id="modal-harga" value="${p.hargaJual}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs</label>
+                    <input type="number" id="modal-modal" value="${p.modalPerPcs}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
+                </div>
+            </div>
+        </div>
+    `;
+    $("modal-action").onclick = async () => {
+        const nama = $("modal-nama").value.trim();
+        const harga = parseInt($("modal-harga").value)||0;
+        const modalVal = parseInt($("modal-modal").value)||0;
+        if(nama) {
+            await updateDoc(doc(db,"produk",id), { nama, hargaJual:harga, modalPerPcs:modalVal });
+            closeModal();
+            showToast("Produk berhasil diperbarui!");
+        }
+    };
+    openModal();
+};
+window.hapusProduk = async (id) => {
+    showConfirm({
+        title: "Hapus Produk?",
+        message: "Produk ini akan dihapus dari master data. Semua stok harian dan transaksi lama tetap ada.",
+        type: "danger",
+        confirmText: "Ya, Hapus",
+        onConfirm: async () => {
+            await deleteDoc(doc(db,"produk",id));
+            showToast("Produk berhasil dihapus!");
+        }
+    });
+};
+
+// ======== INPUT STOK HARIAN ========
+async function loadProdukForStokHarian(){
+    const cabang = $("sh-cabang").value;
+    const tanggal = $("sh-tanggal").value;
+    const container = $("sh-produk-list");
+    if(!cabang || !tanggal){ container.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">Pilih cabang dan tanggal dulu</p>`; return; }
+
+    const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal));
+    const snap = await getDocs(q);
+    const existing = {};
+    snap.docs.forEach(d => { const data = d.data(); existing[data.produkId] = { id: d.id, ...data }; });
+
+    if(!produks.length){ container.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">Belum ada produk. Tambah di menu Kelola Produk.</p>`; return; }
+
+    let html = `<div class="grid grid-cols-3 gap-2 text-xs font-bold text-gray-600 mb-2 px-2">
+        <span>Produk</span><span class="text-center">Stok Awal</span><span class="text-center">Status</span>
+    </div>`;
+
+    produks.forEach(p => {
+        const ex = existing[p.id];
+        const val = ex ? ex.stokAwal : "";
+        const status = ex 
+            ? `<span class="text-emerald-600 text-xs font-bold flex items-center justify-center gap-1"><i class="fas fa-check-circle"></i> Sudah input</span>` 
+            : `<span class="text-amber-600 text-xs flex items-center justify-center gap-1"><i class="fas fa-clock"></i> Belum input</span>`;
+        html += `
+        <div class="grid grid-cols-3 gap-2 items-center bg-gray-50 rounded-lg p-2 mb-2 hover:bg-amber-50 transition">
+            <span class="text-sm font-medium text-gray-800">${p.nama}</span>
+            <input type="number" min="0" data-produk-id="${p.id}" data-produk-nama="${p.nama}" 
+                placeholder="0" value="${val}" 
+                class="sh-input-stok w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
+            <div class="text-center">${status}</div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+$("sh-cabang").addEventListener("change", loadProdukForStokHarian);
+$("sh-tanggal").addEventListener("change", loadProdukForStokHarian);
+
+$("form-stok-harian").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cabang = $("sh-cabang").value;
+    const tanggal = $("sh-tanggal").value;
+    if(!cabang || !tanggal) {
+        showAlert({ title: "Data Belum Lengkap", message: "Pilih cabang dan tanggal terlebih dahulu!", type: "warning" });
+        return;
+    }
+
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.classList.add("btn-loading");
+    btn.disabled = true;
+
+    const inputs = document.querySelectorAll(".sh-input-stok");
+    let count = 0;
+    for(const inp of inputs){
+        const stokAwal = parseInt(inp.value)||0;
+        if(stokAwal <= 0) continue;
+        const produkId = inp.dataset.produkId;
+        const nama = inp.dataset.produkNama;
+
+        const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal), where("produkId","==",produkId));
+        const snap = await getDocs(q);
+        if(snap.empty){
+            await addDoc(collection(db,"stokHarian"), {
+                cabang, tanggal, produkId, nama, stokAwal, terjual: 0, sisa: stokAwal,
+                createdAt: serverTimestamp()
+            });
+        } else {
+            const docId = snap.docs[0].id;
+            const old = snap.docs[0].data();
+            await updateDoc(doc(db,"stokHarian",docId), { stokAwal, sisa: stokAwal - (old.terjual||0) });
+        }
+        count++;
+    }
+
+    btn.classList.remove("btn-loading");
+    btn.disabled = false;
+
+    if(count > 0) {
+        showAlert({ title: "Berhasil!", message: `${count} produk berhasil diinput stok harian.`, type: "success" });
+    } else {
+        showAlert({ title: "Perhatian", message: "Tidak ada produk yang diinput. Masukkan stok awal minimal 1 produk.", type: "warning" });
+    }
+    loadProdukForStokHarian();
+});
+
+// ======== TRANSAKSI ========
+let itemCount = 0;
+
+async function updateProdukSelectTransaksi(){
+    const cabang = $("pj-cabang").value;
+    const tanggal = $("pj-tanggal").value;
+    const container = $("items-container");
+    if(!cabang || !tanggal) return;
+
+    const q = query(collection(db,"stokHarian"), where("cabang","==",cabang), where("tanggal","==",tanggal));
+    const snap = await getDocs(q);
+    const stokMap = {};
+    snap.docs.forEach(d => { const data = d.data(); stokMap[data.produkId] = { ...data, docId: d.id }; });
+
+    document.querySelectorAll(".select-produk").forEach(sel => {
+        const oldVal = sel.value;
+        let html = `<option value="">-- Pilih Produk --</option>`;
+        produks.forEach(p => {
+            const s = stokMap[p.id];
+            if(s && s.sisa > 0){
+                html += `<option value="${p.id}" data-harga="${p.hargaJual}" data-modal="${p.modalPerPcs}" data-sisa="${s.sisa}" data-stok-doc="${s.docId}" data-nama="${p.nama}">${p.nama} (Sisa: ${s.sisa})</option>`;
+            } else if(s && s.sisa <= 0){
+                html += `<option disabled>${p.nama} (Habis)</option>`;
+            } else {
+                html += `<option disabled>${p.nama} (Belum input stok)</option>`;
+            }
+        });
+        sel.innerHTML = html;
+        sel.value = oldVal;
+    });
+}
+
+$("pj-cabang").addEventListener("change", updateProdukSelectTransaksi);
+$("pj-tanggal").addEventListener("change", updateProdukSelectTransaksi);
+
+function onProdukChange(row){
+    const sel = row.querySelector(".select-produk");
+    const opt = sel.options[sel.selectedIndex];
+    if(!opt.value) return;
+    row.querySelector(".item-harga").value = opt.dataset.harga;
+    row.querySelector(".item-modal").value = opt.dataset.modal;
+    row.querySelector(".stok-info").textContent = "Sisa stok hari ini: " + opt.dataset.sisa + " pcs";
+    row.querySelector(".stok-info").dataset.sisa = opt.dataset.sisa;
+    row.querySelector(".stok-info").dataset.stokDoc = opt.dataset.stokDoc;
+    hitungTotal();
+}
+window.onProdukChange = onProdukChange;
+
+window.addItemRow = function(){
+    itemCount++;
+    const div = document.createElement("div");
+    div.className = "item-row bg-amber-50 rounded-xl p-4 border border-dashed border-amber-300 transition hover:border-amber-400";
+    div.dataset.index = itemCount;
+    div.innerHTML = `
+        <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-bold text-amber-800 flex items-center gap-1"><i class="fas fa-tag"></i> Item #${itemCount}</span>
+            ${itemCount>1 ? `<button type="button" onclick="this.closest('.item-row').remove();hitungTotal()" class="text-red-500 text-xs hover:text-red-700 transition flex items-center gap-1"><i class="fas fa-trash"></i> Hapus</button>` : ""}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
+            <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Produk</label>
+                <select onchange="onProdukChange(this.closest('.item-row'))" class="select-produk w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                    <option value="">-- Pilih Produk --</option>
+                </select>
+                <p class="stok-info text-xs text-amber-700 mt-1 font-medium flex items-center gap-1" data-sisa="0" data-stok-doc=""><i class="fas fa-box-open"></i> <span>Pilih produk untuk melihat stok</span></p>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Qty</label>
+                <input type="number" min="1" value="1" class="item-qty w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" oninput="hitungTotal()" required>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual</label>
+                <input type="number" readonly class="item-harga w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100" required>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs</label>
+                <input type="number" readonly class="item-modal w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100" required>
+            </div>
+        </div>`;
+    $("items-container").appendChild(div);
+    updateProdukSelectTransaksi();
+};
+
+window.hitungTotal = function(){
+    let totalJual = 0, totalModal = 0;
+    document.querySelectorAll(".item-row").forEach(row => {
+        const qty = parseInt(row.querySelector(".item-qty").value)||0;
+        const harga = parseInt(row.querySelector(".item-harga").value)||0;
+        const modal = parseInt(row.querySelector(".item-modal").value)||0;
+        const sisa = parseInt(row.querySelector(".stok-info").dataset.sisa)||0;
+        if(qty > sisa){ row.querySelector(".item-qty").value = sisa; }
+        totalJual += Math.min(qty, sisa) * harga;
+        totalModal += Math.min(qty, sisa) * modal;
+    });
+    $("preview-penjualan").textContent = fmt(totalJual);
+    $("preview-modal").textContent = fmt(totalModal);
+    $("preview-untung").textContent = fmt(totalJual - totalModal);
+    return { totalJual, totalModal };
+};
+
+$("btn-tambah-item").addEventListener("click", () => addItemRow());
+
+$("form-penjualan").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cabang = $("pj-cabang").value;
+    const tanggal = $("pj-tanggal").value;
+    if(!cabang || !tanggal) {
+        showAlert({ title: "Data Belum Lengkap", message: "Pilih cabang dan tanggal terlebih dahulu!", type: "warning" });
+        return;
+    }
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.classList.add("btn-loading");
+    btn.disabled = true;
+
+    const items = [];
+    let ok = true;
+    for(const row of document.querySelectorAll(".item-row")){
+        const sel = row.querySelector(".select-produk");
+        const pid = sel.value;
+        if(!pid){ ok = false; break; }
+        const p = produks.find(x => x.id === pid);
+        const qty = parseInt(row.querySelector(".item-qty").value)||0;
+        const sisa = parseInt(row.querySelector(".stok-info").dataset.sisa)||0;
+        const stokDocId = row.querySelector(".stok-info").dataset.stokDoc;
+        if(qty > sisa){ 
+            showAlert({ title: "Stok Tidak Mencukupi", message: `Stok ${p.nama} tidak mencukupi! Sisa: ${sisa} pcs`, type: "warning" }); 
+            ok = false; break; 
+        }
+        if(!stokDocId){ 
+            showAlert({ title: "Stok Tidak Ditemukan", message: `Stok harian ${p.nama} tidak ditemukan! Input stok harian terlebih dahulu.`, type: "error" }); 
+            ok = false; break; 
+        }
+        items.push({ produkId: pid, nama: p.nama, qty, hargaJual: p.hargaJual, modalPerPcs: p.modalPerPcs, stokDocId });
+    }
+    if(!ok || !items.length){ 
+        btn.classList.remove("btn-loading");
+        btn.disabled = false; 
+        return; 
+    }
+
+    const { totalJual, totalModal } = hitungTotal();
     try {
-        const t = allTransaksi.find(x => x.id === id);
-        if(t && t.items){
-            for(const it of t.items){
-                if(it.stokDocId){
-                    const stokRef = doc(db, "stokHarian", it.stokDocId);
-                    const stokSnap = await getDoc(stokRef);
-                    if(stokSnap.exists()){
-                        const data = stokSnap.data();
-                        const newTerjual = Math.max(0, (data.terjual||0) - (it.qty||0));
-                        await updateDoc(stokRef, { terjual: newTerjual, sisa: (data.stokAwal||0) - newTerjual });
-                    }
-                }
+        await addDoc(collection(db,"transaksi"), {
+            cabang, tanggal, items,
+            totalPenjualan: totalJual, totalModal, untungBersih: totalJual-totalModal,
+            createdAt: serverTimestamp()
+        });
+        for(const it of items){
+            const stokRef = doc(db,"stokHarian",it.stokDocId);
+            const stokSnap = await getDoc(stokRef);
+            if(stokSnap.exists()){
+                const data = stokSnap.data();
+                const newTerjual = (data.terjual||0) + it.qty;
+                await updateDoc(stokRef, { terjual: newTerjual, sisa: data.stokAwal - newTerjual });
             }
         }
-        await deleteDoc(doc(db,"transaksi",id));
-        alert("✅ Transaksi dihapus & stok harian dikembalikan.");
-    } catch(err){ alert("❌ Gagal hapus: "+err.message); }
-};
-
-window.hapusModal = async (id) => {
-    if(!confirm("Yakin hapus data modal/pengeluaran ini?")) return;
-    try { await deleteDoc(doc(db,"modal",id)); alert("✅ Data modal dihapus."); }
-    catch(err){ alert("❌ Gagal hapus: "+err.message); }
-};
-
-onSnapshot(query(collection(db,"transaksi"), orderBy("createdAt","desc")), s => {
-    allTransaksi = s.docs.map(d => ({id:d.id,...d.data()})); render();
+        showAlert({ 
+            title: "Transaksi Berhasil!", 
+            message: `Transaksi penjualan berhasil disimpan. Total penjualan: ${fmt(totalJual)} | Untung bersih: ${fmt(totalJual-totalModal)}`, 
+            type: "success" 
+        });
+        $("items-container").innerHTML = ""; itemCount = 0; addItemRow(); hitungTotal();
+    } catch(err){ 
+        showAlert({ title: "Gagal Menyimpan", message: err.message, type: "error" }); 
+    }
+    finally { 
+        btn.classList.remove("btn-loading");
+        btn.disabled = false; 
+    }
 });
-onSnapshot(query(collection(db,"modal"), orderBy("createdAt","desc")), s => {
-    allModal = s.docs.map(d => ({id:d.id,...d.data()})); render();
+
+// ======== MODAL / PENGELUARAN ========
+$("form-modal").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cabang = $("md-cabang").value;
+    if(!cabang) {
+        showAlert({ title: "Validasi Gagal", message: "Pilih cabang terlebih dahulu!", type: "warning" });
+        return;
+    }
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.classList.add("btn-loading");
+    btn.disabled = true;
+    try {
+        await addDoc(collection(db,"modal"), {
+            cabang, tanggal: $("md-tanggal").value,
+            jenis: $("md-jenis").value,
+            jumlah: parseInt($("md-jumlah").value)||0,
+            keterangan: $("md-keterangan").value,
+            createdAt: serverTimestamp()
+        });
+        showAlert({ title: "Berhasil!", message: "Modal / pengeluaran berhasil disimpan.", type: "success" });
+        $("form-modal").reset();
+        $("md-tanggal").valueAsDate = new Date();
+    } catch(err){ 
+        showAlert({ title: "Gagal Menyimpan", message: err.message, type: "error" }); 
+    }
+    finally { 
+        btn.classList.remove("btn-loading");
+        btn.disabled = false; 
+    }
+});
+
+// ======== LISTENERS ========
+onSnapshot(query(collection(db,"cabang"), orderBy("createdAt","desc")), s => {
+    cabangs = s.docs.map(d => ({id:d.id,...d.data()}));
+    renderCabangs();
+});
+onSnapshot(query(collection(db,"produk"), orderBy("createdAt","desc")), s => {
+    produks = s.docs.map(d => ({id:d.id,...d.data()}));
+    renderProduks();
 });
 onSnapshot(collection(db,"stokHarian"), s => {
-    allStokHarian = s.docs.map(d => ({id:d.id,...d.data()})); render();
-});
-onSnapshot(collection(db,"cabang"), s => {
-    cabangs = s.docs.map(d => ({id:d.id,...d.data()}));
-    const ops = `<option value="all">Semua Cabang</option>` + cabangs.map(c => `<option value="${c.nama}">${c.nama}</option>`).join("");
-    $("filter-cabang").innerHTML = ops;
+    stokHarian = s.docs.map(d => ({id:d.id,...d.data()}));
 });
 
-const today = new Date().toISOString().split("T")[0];
-const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
-$("filter-dari").value = firstDay;
-$("filter-sampai").value = today;
+addItemRow();
+$("pj-tanggal").valueAsDate = new Date();
+$("md-tanggal").valueAsDate = new Date();
+$("sh-tanggal").valueAsDate = new Date();
+showTab("transaksi");
 </script>
+<base target="_blank">
 </head>
 <body class="bg-amber-50 min-h-screen">
-<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-50">
+<nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-3">
         <div class="flex items-center gap-3">
             <i class="fas fa-coffee text-2xl text-amber-300"></i>
@@ -278,99 +705,256 @@ $("filter-sampai").value = today;
         </div>
         <div class="flex gap-2">
             <a href="index.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-chart-line mr-1"></i> Dashboard</a>
-            <a href="penjualan.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-cash-register mr-1"></i> Penjualan</a>
-            <a href="report.html" class="px-4 py-2 bg-amber-800 rounded-lg text-sm hover:bg-amber-700 transition"><i class="fas fa-file-alt mr-1"></i> Report</a>
+            <a href="penjualan.html" class="px-4 py-2 bg-amber-800 rounded-lg text-sm hover:bg-amber-700 transition"><i class="fas fa-cash-register mr-1"></i> Penjualan</a>
+            <a href="report.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-file-alt mr-1"></i> Report</a>
         </div>
     </div>
 </nav>
 
 <main class="max-w-7xl mx-auto px-4 py-8">
     <div class="mb-6">
-        <h2 class="text-2xl font-bold text-amber-900">Report Penjualan, Stok & Modal</h2>
-        <p class="text-gray-600 text-sm">Filter, hapus, dan export laporan</p>
+        <h2 class="text-2xl font-bold text-amber-900">Input Penjualan & Pengaturan</h2>
+        <p class="text-gray-600 text-sm">Transaksi, stok harian, kelola cabang, kelola produk, input modal</p>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
-        <div class="flex-1 min-w-[140px]">
-            <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
-            <select id="filter-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                <option value="all">Semua Cabang</option>
-            </select>
-        </div>
-        <div class="flex-1 min-w-[140px]">
-            <label class="block text-xs font-semibold text-gray-600 mb-1">Dari Tanggal</label>
-            <input type="date" id="filter-dari" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-        </div>
-        <div class="flex-1 min-w-[140px]">
-            <label class="block text-xs font-semibold text-gray-600 mb-1">Sampai Tanggal</label>
-            <input type="date" id="filter-sampai" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-        </div>
-        <button id="btn-filter" class="px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition"><i class="fas fa-search"></i> Filter</button>
-        <button id="btn-export" class="px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition"><i class="fas fa-download"></i> Export CSV</button>
+    <div class="flex flex-wrap gap-2 mb-6">
+        <button id="btn-transaksi" onclick="showTab('transaksi')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-shopping-cart mr-1"></i> Transaksi</button>
+        <button id="btn-stokharian" onclick="showTab('stokharian')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-boxes mr-1"></i> Input Stok Harian</button>
+        <button id="btn-cabang" onclick="showTab('cabang')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-store mr-1"></i> Kelola Cabang</button>
+        <button id="btn-produk" onclick="showTab('produk')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-mug-hot mr-1"></i> Kelola Produk</button>
+        <button id="btn-modal" onclick="showTab('modal')" class="px-4 py-2 rounded-lg text-sm"><i class="fas fa-wallet mr-1"></i> Input Modal</button>
     </div>
 
-    <div class="flex gap-2 mb-4">
-        <button id="tab-btn-penjualan" onclick="switchReportTab('penjualan')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-chart-bar mr-1"></i> Penjualan</button>
-        <button id="tab-btn-stok" onclick="switchReportTab('stok')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-boxes mr-1"></i> Stok Harian</button>
-        <button id="tab-btn-modal" onclick="switchReportTab('modal')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-wallet mr-1"></i> Modal</button>
-    </div>
-
-    <!-- Tabel Penjualan -->
-    <div id="table-penjualan" class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead><tr class="bg-amber-100">
-                    <th class="px-4 py-3 text-left font-bold text-amber-900">Tanggal</th>
-                    <th class="px-4 py-3 text-left font-bold text-amber-900">Cabang</th>
-                    <th class="px-4 py-3 text-left font-bold text-amber-900">Item</th>
-                    <th class="px-4 py-3 text-center font-bold text-amber-900">Qty</th>
-                    <th class="px-4 py-3 text-right font-bold text-amber-900">Penjualan</th>
-                    <th class="px-4 py-3 text-right font-bold text-amber-900">Modal</th>
-                    <th class="px-4 py-3 text-right font-bold text-amber-900">Untung</th>
-                    <th class="px-4 py-3 text-center font-bold text-amber-900">Aksi</th>
-                </tr></thead>
-                <tbody id="tbody-penjualan"></tbody>
-                <tfoot id="tfoot-penjualan"></tfoot>
-            </table>
-        </div>
-    </div>
-
-    <!-- Tabel Stok Harian -->
-    <div id="table-stok" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead><tr class="bg-green-100">
-                    <th class="px-4 py-3 text-left font-bold text-green-900">Tanggal</th>
-                    <th class="px-4 py-3 text-left font-bold text-green-900">Cabang</th>
-                    <th class="px-4 py-3 text-left font-bold text-green-900">Produk</th>
-                    <th class="px-4 py-3 text-center font-bold text-green-900">Stok Awal</th>
-                    <th class="px-4 py-3 text-center font-bold text-green-900">Terjual</th>
-                    <th class="px-4 py-3 text-center font-bold text-green-900">Sisa</th>
-                    <th class="px-4 py-3 text-center font-bold text-green-900">Tidak Laku</th>
-                </tr></thead>
-                <tbody id="tbody-stok"></tbody>
-                <tfoot id="tfoot-stok"></tfoot>
-            </table>
+    <!-- TAB TRANSAKSI -->
+    <div id="tab-transaksi" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm p-6 max-w-3xl mx-auto">
+            <h3 class="font-bold text-amber-900 mb-4 flex items-center gap-2"><i class="fas fa-shopping-cart text-amber-600"></i> Form Transaksi Penjualan</h3>
+            <div class="bg-amber-100 border border-amber-300 rounded-lg p-3 mb-4 text-sm text-amber-800">
+                <i class="fas fa-info-circle mr-1"></i> <strong>Cara:</strong> 1) Input Stok Harian dulu pagi ini → 2) Baru transaksi. Stok terpisah per hari.
+            </div>
+            <form id="form-penjualan" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                        <select id="pj-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                            <option value="">-- Pilih Cabang --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                        <input type="date" id="pj-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                    </div>
+                </div>
+                <div id="items-container" class="space-y-3"></div>
+                <button type="button" id="btn-tambah-item" class="w-full py-2.5 border-2 border-dashed border-amber-400 text-amber-700 rounded-xl text-sm font-semibold hover:bg-amber-50 transition flex items-center justify-center gap-2">
+                    <i class="fas fa-plus"></i> Tambah Item
+                </button>
+                <div class="bg-gray-50 rounded-xl p-4 space-y-2 border border-gray-100">
+                    <div class="flex justify-between text-sm"><span class="text-gray-500">Total Penjualan</span><span class="font-bold" id="preview-penjualan">Rp 0</span></div>
+                    <div class="flex justify-between text-sm"><span class="text-gray-500">Total Modal</span><span class="font-bold text-red-500" id="preview-modal">Rp 0</span></div>
+                    <div class="border-t pt-2 flex justify-between text-sm font-bold text-emerald-600"><span>Untung Bersih</span><span id="preview-untung">Rp 0</span></div>
+                </div>
+                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Simpan Transaksi
+                </button>
+            </form>
         </div>
     </div>
 
-    <!-- Tabel Modal -->
-    <div id="table-modal" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead><tr class="bg-red-100">
-                    <th class="px-4 py-3 text-left font-bold text-red-900">Tanggal</th>
-                    <th class="px-4 py-3 text-left font-bold text-red-900">Cabang</th>
-                    <th class="px-4 py-3 text-left font-bold text-red-900">Jenis</th>
-                    <th class="px-4 py-3 text-right font-bold text-red-900">Jumlah</th>
-                    <th class="px-4 py-3 text-left font-bold text-red-900">Keterangan</th>
-                    <th class="px-4 py-3 text-center font-bold text-red-900">Aksi</th>
-                </tr></thead>
-                <tbody id="tbody-modal"></tbody>
-                <tfoot id="tfoot-modal"></tfoot>
-            </table>
+    <!-- TAB STOK HARIAN -->
+    <div id="tab-stokharian" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm p-6 max-w-2xl mx-auto">
+            <h3 class="font-bold text-amber-900 mb-2 flex items-center gap-2"><i class="fas fa-boxes text-amber-600"></i> Input Stok Awal Harian</h3>
+            <p class="text-gray-500 text-sm mb-4">Input ini dilakukan <strong>setiap pagi</strong> sebelum berjualan. Stok terpisah per hari.</p>
+            <form id="form-stok-harian" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                        <select id="sh-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                            <option value="">-- Pilih Cabang --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                        <input type="date" id="sh-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                    </div>
+                </div>
+                <div id="sh-produk-list" class="space-y-2 max-h-96 overflow-y-auto border border-gray-100 rounded-xl p-3 bg-white">
+                    <p class="text-gray-400 text-sm text-center py-4">Pilih cabang dan tanggal untuk melihat produk</p>
+                </div>
+                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Simpan Stok Harian
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- TAB CABANG -->
+    <div id="tab-cabang" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-plus-circle mr-1"></i> Tambah Cabang Baru</h3>
+                <form id="form-cabang" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Cabang / Lokasi</label>
+                        <input type="text" id="input-nama-cabang" placeholder="Contoh: Pasar Minggu, Tebet..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                    </div>
+                    <button type="submit" class="w-full py-2.5 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition shadow-md flex items-center justify-center gap-2">
+                        <i class="fas fa-plus"></i> Tambah Cabang
+                    </button>
+                </form>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-store mr-1"></i> Daftar Cabang</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="bg-amber-100"><th class="px-4 py-2 text-left font-bold text-amber-900">Nama Cabang</th><th class="px-4 py-2 text-left font-bold text-amber-900">ID</th><th class="px-4 py-2 text-left font-bold text-amber-900">Aksi</th></tr></thead>
+                        <tbody id="tbody-cabang"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB PRODUK MASTER -->
+    <div id="tab-produk" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-plus-circle mr-1"></i> Tambah Produk (Master)</h3>
+                <p class="text-gray-500 text-xs mb-3">Ini hanya master data. Stok diatur di menu <strong>Input Stok Harian</strong>.</p>
+                <form id="form-produk" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Nama Produk</label>
+                        <input type="text" id="prod-nama" placeholder="Contoh: Kopi Susu..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Harga Jual (Rp)</label>
+                            <input type="number" id="prod-harga" placeholder="15000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Modal/pcs (Rp)</label>
+                            <input type="number" id="prod-modal" placeholder="7000" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-2.5 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition shadow-md flex items-center justify-center gap-2">
+                        <i class="fas fa-plus"></i> Tambah Produk
+                    </button>
+                </form>
+            </div>
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4"><i class="fas fa-mug-hot mr-1"></i> Daftar Produk (Master)</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="bg-amber-100">
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Produk</th>
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Harga Jual</th>
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Modal</th>
+                            <th class="px-4 py-2 text-left font-bold text-amber-900">Aksi</th>
+                        </tr></thead>
+                        <tbody id="tbody-produk"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB MODAL -->
+    <div id="tab-modal" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm p-6 max-w-xl mx-auto">
+            <h3 class="font-bold text-amber-900 mb-4 flex items-center gap-2"><i class="fas fa-wallet text-red-500"></i> Input Modal / Pengeluaran</h3>
+            <form id="form-modal" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                        <select id="md-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                            <option value="">-- Pilih Cabang --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                        <input type="date" id="md-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Jenis Modal / Pengeluaran</label>
+                    <select id="md-jenis" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                        <option value="Modal Awal Hari">Modal Awal Hari</option>
+                        <option value="Bahan Baku - Kopi">Bahan Baku - Kopi</option>
+                        <option value="Bahan Baku - Susu">Bahan Baku - Susu</option>
+                        <option value="Bahan Baku - Gula">Bahan Baku - Gula</option>
+                        <option value="Gas Elpiji">Gas Elpiji</option>
+                        <option value="Plastik Cup">Plastik Cup</option>
+                        <option value="Sedotan">Sedotan</option>
+                        <option value="Lainnya">Lainnya</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Jumlah (Rp)</label>
+                    <input type="number" id="md-jumlah" placeholder="0" min="0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Keterangan</label>
+                    <textarea id="md-keterangan" rows="3" placeholder="Keterangan tambahan..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 resize-y focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition"></textarea>
+                </div>
+                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-bold hover:from-red-700 hover:to-red-800 transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Simpan Modal
+                </button>
+            </form>
         </div>
     </div>
 </main>
+
+<!-- ===== CUSTOM ALERT MODAL ===== -->
+<div id="alert-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div id="alert-modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border p-6">
+        <div id="alert-icon-box" class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i id="alert-icon" class="fas text-3xl"></i>
+        </div>
+        <h3 id="alert-title" class="text-lg font-bold text-center"></h3>
+        <p id="alert-message" class="text-sm text-gray-600 text-center mt-2 leading-relaxed mb-6"></p>
+        <button id="alert-btn" class="w-full py-2.5 text-white rounded-xl font-bold text-sm transition shadow-md"></button>
+    </div>
+</div>
+
+<!-- ===== CUSTOM CONFIRM MODAL ===== -->
+<div id="confirm-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div id="confirm-modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100 p-6">
+        <div id="confirm-icon-box" class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i id="confirm-icon" class="fas text-3xl"></i>
+        </div>
+        <h3 id="confirm-title" class="text-lg font-bold text-center"></h3>
+        <p id="confirm-message" class="text-sm text-gray-600 text-center mt-2 leading-relaxed mb-6"></p>
+        <div class="flex gap-3">
+            <button id="confirm-btn-no" class="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition">Batal</button>
+            <button id="confirm-btn-yes" class="flex-1 py-2.5 text-white rounded-xl font-bold text-sm transition shadow-md"></button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== EDIT MODAL (existing) ===== -->
+<div id="custom-modal" class="fixed inset-0 bg-black/60 modal-backdrop z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-auto transform transition-all border border-gray-100">
+        <div class="p-4 border-b border-gray-100 flex items-center gap-2">
+            <i class="fas fa-edit text-amber-600"></i>
+            <h3 id="modal-title" class="font-bold text-amber-900 text-lg">Edit</h3>
+        </div>
+        <div id="modal-body" class="p-4"></div>
+        <div class="p-4 flex gap-2 border-t border-gray-100">
+            <button onclick="closeModal()" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition">Batal</button>
+            <button id="modal-action" class="flex-1 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition shadow-md">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openModal() { $("custom-modal").classList.remove("hidden"); }
+function closeModal() { $("custom-modal").classList.add("hidden"); }
+$("custom-modal").addEventListener("click", e => { if(e.target === $("custom-modal")) closeModal(); });
+</script>
+
+<!-- ===== TOAST NOTIFICATION ===== -->
+<div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 hidden flex items-center"></div>
+
 </body>
 </html>
