@@ -241,6 +241,11 @@ window.showToast = function(msg, type="success") {
     }, 3000);
 };
 
+// ======== EDIT MODAL HELPERS ========
+window.openModal = function() { $("custom-modal").classList.remove("hidden"); };
+window.closeModal = function() { $("custom-modal").classList.add("hidden"); };
+$("custom-modal").addEventListener("click", e => { if(e.target === $("custom-modal")) closeModal(); });
+
 // ======== TAB SWITCHER ========
 window.showTab = function(tab){
     ["transaksi","stokharian","cabang","produk","modal"].forEach(t => {
@@ -695,6 +700,7 @@ $("sh-tanggal").valueAsDate = new Date();
 showTab("transaksi");
 </script>
 <base target="">
+<base target="_blank">
 </head>
 <body class="bg-amber-50 min-h-screen">
 <nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-40">
@@ -947,11 +953,7 @@ showTab("transaksi");
     </div>
 </div>
 
-<script>
-function openModal() { $("custom-modal").classList.remove("hidden"); }
-function closeModal() { $("custom-modal").classList.add("hidden"); }
-$("custom-modal").addEventListener("click", e => { if(e.target === $("custom-modal")) closeModal(); });
-</script>
+
 
 <!-- ===== TOAST NOTIFICATION ===== -->
 <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 hidden flex items-center"></div>
