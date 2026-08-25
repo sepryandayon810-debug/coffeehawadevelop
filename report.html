@@ -264,7 +264,7 @@ function renderRangkuman(){
     const fm = getFilteredModal();
 
     let totalPenjualan = 0, totalModal = 0, totalQty = 0, totalTransaksi = ft.length;
-    ft.forEach(t => { totalPenjualan += t.totalPenjualan||0; totalQty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0); });
+    ft.forEach(t => { totalPenjualan += t.totalPenjualan||0; totalModal += t.totalModal||0; totalQty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0); });
     fm.forEach(m => { totalModal += m.jumlah||0; });
     const labaBersih = totalPenjualan - totalModal;
     const margin = totalPenjualan > 0 ? ((labaBersih / totalPenjualan) * 100).toFixed(1) : 0;
@@ -275,6 +275,7 @@ function renderRangkuman(){
     ft.forEach(t => {
         if(!cabangStats[t.cabang]) cabangStats[t.cabang] = { penjualan:0, modal:0, qty:0, transaksi:0 };
         cabangStats[t.cabang].penjualan += t.totalPenjualan||0;
+        cabangStats[t.cabang].modal += t.totalModal||0;
         cabangStats[t.cabang].qty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0);
         cabangStats[t.cabang].transaksi += 1;
     });
@@ -290,6 +291,10 @@ function renderRangkuman(){
     $("sum-margin").textContent = margin + "%";
     $("sum-transaksi").textContent = totalTransaksi;
     $("sum-qty").textContent = totalQty + " pcs";
+    $("sum-cabang").textContent = cabangs.length || 0;
+    const dari = $("filter-dari").value;
+    const sampai = $("filter-sampai").value;
+    $("sum-periode").textContent = (dari && sampai) ? `${fmtDate(dari)} - ${fmtDate(sampai)}` : (dari || sampai || "Semua Periode");
 
     // Color laba
     const labaEl = $("sum-laba");
@@ -556,6 +561,7 @@ $("filter-dari").value = firstDay;
 $("filter-sampai").value = today;
 </script>
 <base target="">
+<base target="_blank">
 </head>
 <body class="bg-amber-50 min-h-screen">
 <nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-40">
@@ -668,7 +674,7 @@ $("filter-sampai").value = today;
                 <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center"><i class="fas fa-store text-blue-600"></i></div>
                 <div>
                     <p class="text-xs text-gray-500 font-semibold">Cabang Aktif</p>
-                    <p class="text-lg font-bold text-gray-800">${cabangs.length || 0}</p>
+                    <p id="sum-cabang" class="text-lg font-bold text-gray-800">0</p>
                 </div>
             </div>
             <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
