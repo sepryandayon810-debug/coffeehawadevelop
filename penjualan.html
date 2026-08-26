@@ -241,11 +241,6 @@ window.showToast = function(msg, type="success") {
     }, 3000);
 };
 
-// ======== EDIT MODAL HELPERS ========
-window.openModal = function() { $("custom-modal").classList.remove("hidden"); };
-window.closeModal = function() { $("custom-modal").classList.add("hidden"); };
-$("custom-modal").addEventListener("click", e => { if(e.target === $("custom-modal")) closeModal(); });
-
 // ======== TAB SWITCHER ========
 window.showTab = function(tab){
     ["transaksi","stokharian","cabang","produk","modal"].forEach(t => {
@@ -580,6 +575,53 @@ window.hitungTotal = function(){
 
 $("btn-tambah-item").addEventListener("click", () => addItemRow());
 
+// ======== MODAL / PENGELUARAN (KWITANSI MULTI-ITEM) ========
+let mdItemCount = 0;
+
+window.addMdItemRow = function(){
+    mdItemCount++;
+    const div = document.createElement("div");
+    div.className = "md-item-row grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-white rounded-lg p-3 border border-gray-100 transition hover:border-red-200";
+    div.dataset.index = mdItemCount;
+    div.innerHTML = `
+        <div class="md:col-span-4">
+            <label class="md:hidden text-xs font-semibold text-gray-500 mb-1 block">Nama Barang</label>
+            <input type="text" placeholder="Nama barang..." class="md-item-nama w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition" required>
+        </div>
+        <div class="md:col-span-2">
+            <label class="md:hidden text-xs font-semibold text-gray-500 mb-1 block">Qty</label>
+            <input type="number" min="1" value="1" class="md-item-qty w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition" oninput="hitungMdTotal()" required>
+        </div>
+        <div class="md:col-span-3">
+            <label class="md:hidden text-xs font-semibold text-gray-500 mb-1 block">Harga Satuan</label>
+            <input type="number" min="0" placeholder="0" class="md-item-harga w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-right focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition" oninput="hitungMdTotal()" required>
+        </div>
+        <div class="md:col-span-2">
+            <label class="md:hidden text-xs font-semibold text-gray-500 mb-1 block">Total</label>
+            <input type="text" readonly class="md-item-total w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-right bg-gray-100 font-semibold text-red-600" value="Rp 0">
+        </div>
+        <div class="md:col-span-1 text-center">
+            ${mdItemCount > 1 ? `<button type="button" onclick="this.closest('.md-item-row').remove();hitungMdTotal()" class="text-red-400 hover:text-red-600 transition" title="Hapus"><i class="fas fa-trash"></i></button>` : `<span class="text-gray-300 text-xs">#${mdItemCount}</span>`}
+        </div>
+    `;
+    $("md-items-container").appendChild(div);
+};
+
+window.hitungMdTotal = function(){
+    let grandTotal = 0;
+    document.querySelectorAll(".md-item-row").forEach(row => {
+        const qty = parseInt(row.querySelector(".md-item-qty").value) || 0;
+        const harga = parseInt(row.querySelector(".md-item-harga").value) || 0;
+        const total = qty * harga;
+        row.querySelector(".md-item-total").value = fmt(total);
+        grandTotal += total;
+    });
+    $("md-preview-total").textContent = fmt(grandTotal);
+    return grandTotal;
+};
+
+$("btn-md-tambah-item").addEventListener("click", () => addMdItemRow());
+
 $("form-penjualan").addEventListener("submit", async e => {
     e.preventDefault();
     const cabang = $("pj-cabang").value;
@@ -620,9 +662,11 @@ $("form-penjualan").addEventListener("submit", async e => {
 
     const { totalJual, totalModal } = hitungTotal();
     try {
+        const metodeBayar = $("pj-metode").value || "cash";
         await addDoc(collection(db,"transaksi"), {
             cabang, tanggal, items,
             totalPenjualan: totalJual, totalModal, untungBersih: totalJual-totalModal,
+            metodePembayaran: metodeBayar,
             createdAt: serverTimestamp()
         });
         for(const it of items){
@@ -649,7 +693,7 @@ $("form-penjualan").addEventListener("submit", async e => {
     }
 });
 
-// ======== MODAL / PENGELUARAN ========
+// ======== MODAL / PENGELUARAN (KWITANSI) ========
 $("form-modal").addEventListener("submit", async e => {
     e.preventDefault();
     const cabang = $("md-cabang").value;
@@ -657,19 +701,41 @@ $("form-modal").addEventListener("submit", async e => {
         showAlert({ title: "Validasi Gagal", message: "Pilih cabang terlebih dahulu!", type: "warning" });
         return;
     }
+
+    const mdItems = [];
+    let ok = true;
+    for(const row of document.querySelectorAll(".md-item-row")){
+        const nama = row.querySelector(".md-item-nama").value.trim();
+        const qty = parseInt(row.querySelector(".md-item-qty").value) || 0;
+        const harga = parseInt(row.querySelector(".md-item-harga").value) || 0;
+        if(!nama) { ok = false; break; }
+        if(qty <= 0 || harga < 0) { ok = false; break; }
+        mdItems.push({ nama, qty, hargaSatuan: harga, total: qty * harga });
+    }
+    if(!ok || !mdItems.length){
+        showAlert({ title: "Data Belum Lengkap", message: "Isi semua nama barang, qty, dan harga satuan dengan benar!", type: "warning" });
+        return;
+    }
+
     const btn = e.target.querySelector('button[type="submit"]');
     btn.classList.add("btn-loading");
     btn.disabled = true;
     try {
+        const totalJumlah = mdItems.reduce((a, i) => a + i.total, 0);
         await addDoc(collection(db,"modal"), {
             cabang, tanggal: $("md-tanggal").value,
-            jenis: $("md-jenis").value,
-            jumlah: parseInt($("md-jumlah").value)||0,
+            jenis: "Pembelian Bahan",
+            jumlah: totalJumlah,
+            items: mdItems,
             keterangan: $("md-keterangan").value,
             createdAt: serverTimestamp()
         });
-        showAlert({ title: "Berhasil!", message: "Modal / pengeluaran berhasil disimpan.", type: "success" });
-        $("form-modal").reset();
+        showAlert({ title: "Berhasil!", message: `Kwitansi pengeluaran berhasil disimpan. Total: ${fmt(totalJumlah)}`, type: "success" });
+        $("md-items-container").innerHTML = "";
+        mdItemCount = 0;
+        addMdItemRow();
+        hitungMdTotal();
+        $("md-keterangan").value = "";
         $("md-tanggal").valueAsDate = new Date();
     } catch(err){ 
         showAlert({ title: "Gagal Menyimpan", message: err.message, type: "error" }); 
@@ -694,6 +760,7 @@ onSnapshot(collection(db,"stokHarian"), s => {
 });
 
 addItemRow();
+addMdItemRow();
 $("pj-tanggal").valueAsDate = new Date();
 $("md-tanggal").valueAsDate = new Date();
 $("sh-tanggal").valueAsDate = new Date();
@@ -759,6 +826,13 @@ showTab("transaksi");
                     <div class="flex justify-between text-sm"><span class="text-gray-500">Total Penjualan</span><span class="font-bold" id="preview-penjualan">Rp 0</span></div>
                     <div class="flex justify-between text-sm"><span class="text-gray-500">Total Modal</span><span class="font-bold text-red-500" id="preview-modal">Rp 0</span></div>
                     <div class="border-t pt-2 flex justify-between text-sm font-bold text-emerald-600"><span>Untung Bersih</span><span id="preview-untung">Rp 0</span></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Metode Pembayaran</label>
+                    <select id="pj-metode" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition">
+                        <option value="cash">💵 Cash (Tunai)</option>
+                        <option value="qris">📱 QRIS</option>
+                    </select>
                 </div>
                 <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-lg flex items-center justify-center gap-2">
                     <i class="fas fa-save"></i> Simpan Transaksi
@@ -867,7 +941,7 @@ showTab("transaksi");
 
     <!-- TAB MODAL -->
     <div id="tab-modal" class="hidden">
-        <div class="bg-white rounded-xl shadow-sm p-6 max-w-xl mx-auto">
+        <div class="bg-white rounded-xl shadow-sm p-6 max-w-3xl mx-auto">
             <h3 class="font-bold text-amber-900 mb-4 flex items-center gap-2"><i class="fas fa-wallet text-red-500"></i> Input Modal / Pengeluaran</h3>
             <form id="form-modal" class="space-y-4">
                 <div class="grid grid-cols-2 gap-3">
@@ -882,26 +956,38 @@ showTab("transaksi");
                         <input type="date" id="md-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
                     </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Jenis Modal / Pengeluaran</label>
-                    <select id="md-jenis" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
-                        <option value="Modal Awal Hari">Modal Awal Hari</option>
-                        <option value="Bahan Baku - Kopi">Bahan Baku - Kopi</option>
-                        <option value="Bahan Baku - Susu">Bahan Baku - Susu</option>
-                        <option value="Bahan Baku - Gula">Bahan Baku - Gula</option>
-                        <option value="Gas Elpiji">Gas Elpiji</option>
-                        <option value="Plastik Cup">Plastik Cup</option>
-                        <option value="Sedotan">Sedotan</option>
-                        <option value="Lainnya">Lainnya</option>
-                    </select>
+
+                <!-- Detail Pembelian / Kwitansi -->
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="text-sm font-bold text-gray-700 flex items-center gap-2"><i class="fas fa-receipt text-red-500"></i> Detail Pembelian</h4>
+                        <span class="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border">Kwitansi</span>
+                    </div>
+                    <!-- Header -->
+                    <div class="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-2 px-1">
+                        <span class="col-span-4">Nama Barang</span>
+                        <span class="col-span-2 text-center">Qty</span>
+                        <span class="col-span-3 text-right">Harga Satuan</span>
+                        <span class="col-span-2 text-right">Total</span>
+                        <span class="col-span-1"></span>
+                    </div>
+                    <div id="md-items-container" class="space-y-2"></div>
+                    <button type="button" id="btn-md-tambah-item" class="w-full py-2.5 border-2 border-dashed border-red-300 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-50 transition flex items-center justify-center gap-2 mt-3">
+                        <i class="fas fa-plus"></i> Tambah Item
+                    </button>
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Jumlah (Rp)</label>
-                    <input type="number" id="md-jumlah" placeholder="0" min="0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition" required>
+
+                <!-- Total -->
+                <div class="bg-red-50 rounded-xl p-4 border border-red-100">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-bold text-red-800">Total Pengeluaran</span>
+                        <span class="text-2xl font-black text-red-600" id="md-preview-total">Rp 0</span>
+                    </div>
                 </div>
+
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Keterangan</label>
-                    <textarea id="md-keterangan" rows="3" placeholder="Keterangan tambahan..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 resize-y focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition"></textarea>
+                    <textarea id="md-keterangan" rows="2" placeholder="Keterangan tambahan..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 resize-y focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition"></textarea>
                 </div>
                 <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-bold hover:from-red-700 hover:to-red-800 transition shadow-lg flex items-center justify-center gap-2">
                     <i class="fas fa-save"></i> Simpan Modal
@@ -953,7 +1039,11 @@ showTab("transaksi");
     </div>
 </div>
 
-
+<script>
+function openModal() { $("custom-modal").classList.remove("hidden"); }
+function closeModal() { $("custom-modal").classList.add("hidden"); }
+$("custom-modal").addEventListener("click", e => { if(e.target === $("custom-modal")) closeModal(); });
+</script>
 
 <!-- ===== TOAST NOTIFICATION ===== -->
 <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-sm font-semibold z-50 hidden flex items-center"></div>
