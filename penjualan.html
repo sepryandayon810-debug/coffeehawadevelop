@@ -112,6 +112,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const $ = id => document.getElementById(id);
+// Dipakai juga oleh script modal yang berada di luar module.
+window.$ = $;
 const fmt = n => "Rp " + (n||0).toLocaleString("id-ID");
 
 let cabangs = [], produks = [], stokHarian = [];
@@ -135,11 +137,33 @@ function normalisasiNamaBahan(nama) {
 
 function renderDaftarBahan() {
     const datalist = $("md-bahan-options");
-    if(!datalist) return;
-    datalist.innerHTML = daftarBahan
+    const options = daftarBahan
         .sort((a, b) => a.localeCompare(b, "id"))
-        .map(nama => `<option value="${nama.replace(/"/g, "&quot;")}"></option>`)
+        .map(nama => `<option value="${nama.replace(/"/g, "&quot;")}">${nama}</option>`)
         .join("");
+    if(datalist) {
+        datalist.innerHTML = options;
+    }
+    document.querySelectorAll(".md-item-preset").forEach(select => {
+        const nilaiSekarang = select.value;
+        select.innerHTML = `<option value="">-- Pilih bahan dari daftar --</option>${options}<option value="__manual__">✏️ Ketik nama bahan baru</option>`;
+        if([...select.options].some(option => option.value === nilaiSekarang)) {
+            select.value = nilaiSekarang;
+        }
+    });
+}
+
+window.onBahanPresetChange = function(select) {
+    const input = select.closest(".md-item-row").querySelector(".md-item-nama");
+    if(select.value === "__manual__") {
+        input.value = "";
+        input.focus();
+        return;
+    }
+    if(select.value) {
+        input.value = select.value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
 }
 
 function tambahkanBahanKeDaftar(nama) {
@@ -624,8 +648,13 @@ window.addMdItemRow = function(){
     div.innerHTML = `
         <div class="md:col-span-4">
             <label class="md:hidden text-xs font-semibold text-gray-500 mb-1 block">Nama Barang</label>
+            <select class="md-item-preset w-full px-3 py-2 mb-1 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition" onchange="onBahanPresetChange(this)">
+                <option value="">-- Pilih bahan dari daftar --</option>
+                ${daftarBahan.map(nama => `<option value="${nama.replace(/"/g, "&quot;")}">${nama}</option>`).join("")}
+                <option value="__manual__">✏️ Ketik nama bahan baru</option>
+            </select>
             <input type="text" list="md-bahan-options" placeholder="Pilih atau ketik nama barang..." class="md-item-nama w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition" autocomplete="off" required>
-            <p class="text-[11px] text-gray-400 mt-1">Bisa pilih dari daftar atau ketik bahan baru</p>
+            <p class="text-[11px] text-gray-400 mt-1">Atau ketik nama bahan sendiri di kolom bawah</p>
         </div>
         <div class="md:col-span-2">
             <label class="md:hidden text-xs font-semibold text-gray-500 mb-1 block">Qty</label>
