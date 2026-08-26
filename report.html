@@ -284,6 +284,15 @@ function renderRangkuman(){
         cabangStats[m.cabang].modal += m.jumlah||0;
     });
 
+    // Payment method breakdown
+    let totalCash = 0, totalQris = 0;
+    ft.forEach(t => {
+        const metode = t.metodePembayaran || "cash";
+        if(metode === "qris") totalQris += t.totalPenjualan || 0;
+        else totalCash += t.totalPenjualan || 0;
+    });
+    const cashPct = totalPenjualan > 0 ? ((totalCash / totalPenjualan) * 100).toFixed(1) : 0;
+
     // Update summary cards
     $("sum-penjualan").textContent = fmt(totalPenjualan);
     $("sum-modal").textContent = fmt(totalModal);
@@ -292,6 +301,9 @@ function renderRangkuman(){
     $("sum-transaksi").textContent = totalTransaksi;
     $("sum-qty").textContent = totalQty + " pcs";
     $("sum-cabang").textContent = cabangs.length || 0;
+    $("sum-cash").textContent = fmt(totalCash);
+    $("sum-qris").textContent = fmt(totalQris);
+    $("sum-cash-pct").textContent = cashPct + "%";
     const dari = $("filter-dari").value;
     const sampai = $("filter-sampai").value;
     $("sum-periode").textContent = (dari && sampai) ? `${fmtDate(dari)} - ${fmtDate(sampai)}` : (dari || sampai || "Semua Periode");
@@ -350,12 +362,14 @@ function renderPenjualan(){
     const ft = getFilteredTransaksi();
     const tbody = $("tbody-penjualan");
     const tfoot = $("tfoot-penjualan");
-    if(!ft.length){ tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-gray-400">Tidak ada data transaksi</td></tr>`; tfoot.innerHTML=""; return; }
+    if(!ft.length){ tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-gray-400">Tidak ada data transaksi</td></tr>`; tfoot.innerHTML=""; return; }
     let totJual=0, totModal=0;
     tbody.innerHTML = ft.map(t => {
         totJual += t.totalPenjualan||0; totModal += t.totalModal||0;
         const itemNames = (t.items||[]).map(i=>i.nama).join(", ");
         const badge = t.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        const metode = t.metodePembayaran || "cash";
+        const metodeIcon = metode === "qris" ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-qrcode mr-1"></i>QRIS</span>` : `<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-money-bill-wave mr-1"></i>Cash</span>`;
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition">
             <td class="px-4 py-3 text-sm">${fmtDate(t.tanggal)}</td>
             <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${t.cabang}</span></td>
@@ -364,6 +378,7 @@ function renderPenjualan(){
             <td class="px-4 py-3 text-sm text-right font-semibold">${fmt(t.totalPenjualan)}</td>
             <td class="px-4 py-3 text-sm text-right text-red-500">${fmt(t.totalModal)}</td>
             <td class="px-4 py-3 text-sm text-right font-bold text-emerald-600">${fmt((t.totalPenjualan||0)-(t.totalModal||0))}</td>
+            <td class="px-4 py-3 text-sm text-center">${metodeIcon}</td>
             <td class="px-4 py-3 text-sm text-center">
                 <button onclick="hapusTransaksi('${t.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus transaksi"><i class="fas fa-trash"></i></button>
             </td>
@@ -374,7 +389,7 @@ function renderPenjualan(){
         <td class="px-4 py-3 text-right">${fmt(totJual)}</td>
         <td class="px-4 py-3 text-right text-red-600">${fmt(totModal)}</td>
         <td class="px-4 py-3 text-right text-emerald-700">${fmt(totJual-totModal)}</td>
-        <td></td>
+        <td colspan="2"></td>
     </tr>`;
 }
 
@@ -413,28 +428,66 @@ function renderModal(){
     const fm = getFilteredModal();
     const tbody = $("tbody-modal");
     const tfoot = $("tfoot-modal");
-    if(!fm.length){ tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">Tidak ada data modal/pengeluaran</td></tr>`; tfoot.innerHTML=""; return; }
+    if(!fm.length){ tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400">Tidak ada data modal/pengeluaran</td></tr>`; tfoot.innerHTML=""; return; }
     let tot=0;
     tbody.innerHTML = fm.map(m => {
         tot += m.jumlah||0;
         const badge = m.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        const hasItems = m.items && m.items.length > 0;
+        const detailBtn = hasItems 
+            ? `<button onclick="toggleModalDetail('${m.id}')" class="text-blue-600 hover:text-blue-800 transition text-xs font-semibold bg-blue-50 px-2 py-1 rounded-lg" title="Lihat detail"><i class="fas fa-list-ul mr-1"></i>${m.items.length} item</button>`
+            : `<span class="text-gray-300 text-xs">-</span>`;
+
+        let detailRow = "";
+        if(hasItems){
+            detailRow = `<tr id="md-detail-${m.id}" class="hidden bg-gray-50 border-b border-gray-100">
+                <td colspan="7" class="px-4 py-3">
+                    <div class="bg-white rounded-lg border border-gray-100 p-3 mx-2">
+                        <p class="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Detail Pembelian</p>
+                        <table class="w-full text-xs">
+                            <thead><tr class="border-b border-gray-100">
+                                <th class="text-left py-1 text-gray-600">Nama Barang</th>
+                                <th class="text-center py-1 text-gray-600">Qty</th>
+                                <th class="text-right py-1 text-gray-600">Harga Satuan</th>
+                                <th class="text-right py-1 text-gray-600">Total</th>
+                            </tr></thead>
+                            <tbody>
+                                ${m.items.map(it => `<tr class="border-b border-gray-50">
+                                    <td class="py-1.5 font-medium text-gray-700">${it.nama}</td>
+                                    <td class="py-1.5 text-center">${it.qty}</td>
+                                    <td class="py-1.5 text-right">${fmt(it.hargaSatuan)}</td>
+                                    <td class="py-1.5 text-right font-bold text-red-500">${fmt(it.total)}</td>
+                                </tr>`).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </td>
+            </tr>`;
+        }
+
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition">
             <td class="px-4 py-3 text-sm">${fmtDate(m.tanggal)}</td>
             <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${m.cabang}</span></td>
             <td class="px-4 py-3 text-sm font-medium text-gray-700">${m.jenis}</td>
             <td class="px-4 py-3 text-sm text-right font-bold text-red-500">${fmt(m.jumlah)}</td>
             <td class="px-4 py-3 text-sm text-gray-500">${m.keterangan||"-"}</td>
+            <td class="px-4 py-3 text-sm text-center">${detailBtn}</td>
             <td class="px-4 py-3 text-sm text-center">
                 <button onclick="hapusModal('${m.id}')" class="text-red-500 hover:text-red-700 transition" title="Hapus"><i class="fas fa-trash"></i></button>
             </td>
-        </tr>`;
+        </tr>${detailRow}`;
     }).join("");
     tfoot.innerHTML = `<tr class="bg-red-50 font-bold text-red-900">
         <td colspan="3" class="px-4 py-3 text-right">TOTAL PENGELUARAN</td>
         <td class="px-4 py-3 text-right">${fmt(tot)}</td>
-        <td colspan="2"></td>
+        <td colspan="3"></td>
     </tr>`;
 }
+
+window.toggleModalDetail = function(id) {
+    const row = $("md-detail-" + id);
+    if(row) row.classList.toggle("hidden");
+};
 
 function render(){
     ["penjualan","stok","modal","rangkuman"].forEach(t => {
@@ -655,7 +708,7 @@ $("filter-sampai").value = today;
         </div>
 
         <!-- Secondary Stats -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center"><i class="fas fa-receipt text-amber-600"></i></div>
                 <div>
@@ -677,8 +730,33 @@ $("filter-sampai").value = today;
                     <p id="sum-cabang" class="text-lg font-bold text-gray-800">0</p>
                 </div>
             </div>
+        </div>
+
+        <!-- Payment Method Stats -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center"><i class="fas fa-calendar-alt text-purple-600"></i></div>
+                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center"><i class="fas fa-money-bill-wave text-green-600"></i></div>
+                <div>
+                    <p class="text-xs text-gray-500 font-semibold">Penjualan Cash</p>
+                    <p id="sum-cash" class="text-lg font-bold text-gray-800">Rp 0</p>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center"><i class="fas fa-qrcode text-purple-600"></i></div>
+                <div>
+                    <p class="text-xs text-gray-500 font-semibold">Penjualan QRIS</p>
+                    <p id="sum-qris" class="text-lg font-bold text-gray-800">Rp 0</p>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center"><i class="fas fa-percentage text-orange-600"></i></div>
+                <div>
+                    <p class="text-xs text-gray-500 font-semibold">% Cash</p>
+                    <p id="sum-cash-pct" class="text-lg font-bold text-gray-800">0%</p>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center"><i class="fas fa-calendar-alt text-gray-600"></i></div>
                 <div>
                     <p class="text-xs text-gray-500 font-semibold">Periode</p>
                     <p id="sum-periode" class="text-lg font-bold text-gray-800">-</p>
@@ -721,6 +799,7 @@ $("filter-sampai").value = today;
                     <th class="px-4 py-3 text-right font-bold text-amber-900">Penjualan</th>
                     <th class="px-4 py-3 text-right font-bold text-amber-900">Modal</th>
                     <th class="px-4 py-3 text-right font-bold text-amber-900">Untung</th>
+                    <th class="px-4 py-3 text-center font-bold text-amber-900">Metode</th>
                     <th class="px-4 py-3 text-center font-bold text-amber-900">Aksi</th>
                 </tr></thead>
                 <tbody id="tbody-penjualan"></tbody>
@@ -758,6 +837,7 @@ $("filter-sampai").value = today;
                     <th class="px-4 py-3 text-left font-bold text-red-900">Jenis</th>
                     <th class="px-4 py-3 text-right font-bold text-red-900">Jumlah</th>
                     <th class="px-4 py-3 text-left font-bold text-red-900">Keterangan</th>
+                    <th class="px-4 py-3 text-center font-bold text-red-900">Detail</th>
                     <th class="px-4 py-3 text-center font-bold text-red-900">Aksi</th>
                 </tr></thead>
                 <tbody id="tbody-modal"></tbody>
