@@ -92,10 +92,12 @@ function hitungOmzet() {
     });
     Object.keys(pc).forEach(k => {
         pc[k].totalBeban = pc[k].modalBarang + pc[k].pengeluaran;
-        pc[k].untung = pc[k].penjualan - pc[k].totalBeban;
+        // Pengeluaran bahan dicatat terpisah karena bisa menjadi stok
+        // untuk beberapa hari. Laba penjualan memakai HPP barang terjual.
+        pc[k].untung = pc[k].penjualan - pc[k].modalBarang;
     });
     tot.totalBeban = tot.modalBarang + tot.pengeluaran;
-    tot.untung = tot.penjualan - tot.totalBeban;
+    tot.untung = tot.penjualan - tot.modalBarang;
     return { pc, tot };
 }
 
@@ -112,7 +114,7 @@ function renderChart(pc) {
                 { label:"Penjualan", data: labels.map(l=>pc[l].penjualan), backgroundColor:"#d97706", borderRadius:4 },
                 { label:"Modal Barang Terjual", data: labels.map(l=>pc[l].modalBarang), backgroundColor:"#f97316", borderRadius:4 },
                 { label:"Pengeluaran Bahan", data: labels.map(l=>pc[l].pengeluaran), backgroundColor:"#ef4444", borderRadius:4 },
-                { label:"Untung", data: labels.map(l=>pc[l].untung), backgroundColor:"#10b981", borderRadius:4 }
+                { label:"Laba Penjualan", data: labels.map(l=>pc[l].untung), backgroundColor:"#10b981", borderRadius:4 }
             ]
         },
         options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"top"}}, scales:{y:{beginAtZero:true, ticks:{callback:v=>"Rp "+(v/1000)+"k"}}} }
@@ -150,7 +152,7 @@ function render() {
                 <div class="flex justify-between text-sm"><span class="text-gray-500">Penjualan</span><span class="font-semibold text-green-600">${fmt(d.penjualan)}</span></div>
                 <div class="flex justify-between text-sm"><span class="text-gray-500">Modal barang terjual</span><span class="font-semibold text-orange-500">${fmt(d.modalBarang)}</span></div>
                 <div class="flex justify-between text-sm"><span class="text-gray-500">Pengeluaran bahan</span><span class="font-semibold text-red-500">${fmt(d.pengeluaran)}</span></div>
-                <div class="border-t pt-2 flex justify-between text-sm"><span class="text-gray-600 font-medium">Untung Bersih</span><span class="font-bold ${d.untung>=0?"text-amber-700":"text-red-600"}">${fmt(d.untung)}</span></div>
+                <div class="border-t pt-2 flex justify-between text-sm"><span class="text-gray-600 font-medium">Laba Penjualan</span><span class="font-bold ${d.untung>=0?"text-amber-700":"text-red-600"}">${fmt(d.untung)}</span></div>
             </div>`;
         container.appendChild(div);
     });
@@ -182,7 +184,7 @@ onSnapshot(collection(db,"cabang"), s=>{ cabangList=s.docs.map(d=>({id:d.id,...d
         <p class="text-gray-600 text-sm">Ringkasan penjualan seluruh cabang Coffee Hawa — update realtime</p>
         <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
             <i class="fas fa-info-circle mr-1"></i>
-            <strong>Catatan:</strong> Modal barang terjual dan pengeluaran pembelian bahan ditampilkan terpisah agar laba bersih lebih akurat.
+            <strong>Catatan:</strong> Laba penjualan dihitung dari penjualan dikurangi modal barang terjual. Pengeluaran pembelian bahan hanya dicatat terpisah karena bisa menjadi stok untuk beberapa hari.
         </div>
     </div>
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6 border border-amber-100">
@@ -225,7 +227,7 @@ onSnapshot(collection(db,"cabang"), s=>{ cabangList=s.docs.map(d=>({id:d.id,...d
             <p class="text-2xl font-bold text-red-600 mt-1" id="total-pengeluaran">Rp 0</p>
         </div>
         <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-green-500">
-            <p class="text-gray-500 text-xs uppercase tracking-wide">Untung Bersih</p>
+            <p class="text-gray-500 text-xs uppercase tracking-wide">Laba Penjualan</p>
             <p class="text-2xl font-bold text-green-600 mt-1" id="total-untung">Rp 0</p>
         </div>
         <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-500">
