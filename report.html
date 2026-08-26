@@ -263,25 +263,31 @@ function renderRangkuman(){
     const ft = getFilteredTransaksi();
     const fm = getFilteredModal();
 
-    let totalPenjualan = 0, totalModal = 0, totalQty = 0, totalTransaksi = ft.length;
-    ft.forEach(t => { totalPenjualan += t.totalPenjualan||0; totalModal += t.totalModal||0; totalQty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0); });
-    fm.forEach(m => { totalModal += m.jumlah||0; });
-    const labaBersih = totalPenjualan - totalModal;
+    let totalPenjualan = 0, totalModalBarang = 0, totalPengeluaran = 0, totalQty = 0, totalTransaksi = ft.length;
+    ft.forEach(t => {
+        totalPenjualan += t.totalPenjualan||0;
+        totalModalBarang += t.totalModal||0;
+        totalQty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0);
+    });
+    fm.forEach(m => { totalPengeluaran += m.jumlah||0; });
+    // Pengeluaran bahan hanya pencatatan pembelian/stok.
+    // Laba penjualan dihitung dari omzet dikurangi HPP barang terjual.
+    const labaBersih = totalPenjualan - totalModalBarang;
     const margin = totalPenjualan > 0 ? ((labaBersih / totalPenjualan) * 100).toFixed(1) : 0;
 
     // Per cabang
     const cabangStats = {};
-    cabangs.forEach(c => { cabangStats[c.nama] = { penjualan:0, modal:0, qty:0, transaksi:0 }; });
+    cabangs.forEach(c => { cabangStats[c.nama] = { penjualan:0, modalBarang:0, pengeluaran:0, qty:0, transaksi:0 }; });
     ft.forEach(t => {
-        if(!cabangStats[t.cabang]) cabangStats[t.cabang] = { penjualan:0, modal:0, qty:0, transaksi:0 };
+        if(!cabangStats[t.cabang]) cabangStats[t.cabang] = { penjualan:0, modalBarang:0, pengeluaran:0, qty:0, transaksi:0 };
         cabangStats[t.cabang].penjualan += t.totalPenjualan||0;
-        cabangStats[t.cabang].modal += t.totalModal||0;
+        cabangStats[t.cabang].modalBarang += t.totalModal||0;
         cabangStats[t.cabang].qty += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0);
         cabangStats[t.cabang].transaksi += 1;
     });
     fm.forEach(m => {
-        if(!cabangStats[m.cabang]) cabangStats[m.cabang] = { penjualan:0, modal:0, qty:0, transaksi:0 };
-        cabangStats[m.cabang].modal += m.jumlah||0;
+        if(!cabangStats[m.cabang]) cabangStats[m.cabang] = { penjualan:0, modalBarang:0, pengeluaran:0, qty:0, transaksi:0 };
+        cabangStats[m.cabang].pengeluaran += m.jumlah||0;
     });
 
     // Payment method breakdown
@@ -295,7 +301,8 @@ function renderRangkuman(){
 
     // Update summary cards
     $("sum-penjualan").textContent = fmt(totalPenjualan);
-    $("sum-modal").textContent = fmt(totalModal);
+    $("sum-modal-barang").textContent = fmt(totalModalBarang);
+    $("sum-pengeluaran").textContent = fmt(totalPengeluaran);
     $("sum-laba").textContent = fmt(labaBersih);
     $("sum-margin").textContent = margin + "%";
     $("sum-transaksi").textContent = totalTransaksi;
@@ -322,18 +329,18 @@ function renderRangkuman(){
     // Render per cabang table
     const tbody = $("tbody-rangkuman");
     const tfoot = $("tfoot-rangkuman");
-    const entries = Object.entries(cabangStats).filter(([_,v]) => v.penjualan > 0 || v.modal > 0).sort((a,b) => b[1].penjualan - a[1].penjualan);
+    const entries = Object.entries(cabangStats).filter(([_,v]) => v.penjualan > 0 || v.modalBarang > 0 || v.pengeluaran > 0).sort((a,b) => b[1].penjualan - a[1].penjualan);
 
     if(!entries.length){
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">Tidak ada data dalam periode ini</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400">Tidak ada data dalam periode ini</td></tr>`;
         tfoot.innerHTML = "";
         return;
     }
 
-    let totP=0, totM=0, totQ=0, totT=0;
+    let totP=0, totMB=0, totE=0, totQ=0, totT=0;
     tbody.innerHTML = entries.map(([nama, s]) => {
-        totP += s.penjualan; totM += s.modal; totQ += s.qty; totT += s.transaksi;
-        const laba = s.penjualan - s.modal;
+        totP += s.penjualan; totMB += s.modalBarang; totE += s.pengeluaran; totQ += s.qty; totT += s.transaksi;
+        const laba = s.penjualan - s.modalBarang;
         const labaClass = laba >= 0 ? "text-emerald-600" : "text-red-600";
         const badge = nama === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition">
@@ -341,19 +348,21 @@ function renderRangkuman(){
             <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.transaksi}</td>
             <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.qty}</td>
             <td class="px-4 py-3 text-sm text-right font-bold text-amber-700">${fmt(s.penjualan)}</td>
-            <td class="px-4 py-3 text-sm text-right font-bold text-red-500">${fmt(s.modal)}</td>
+            <td class="px-4 py-3 text-sm text-right font-bold text-orange-500">${fmt(s.modalBarang)}</td>
+            <td class="px-4 py-3 text-sm text-right font-bold text-red-500">${fmt(s.pengeluaran)}</td>
             <td class="px-4 py-3 text-sm text-right font-black ${labaClass}">${fmt(laba)}</td>
         </tr>`;
     }).join("");
 
-    const totLaba = totP - totM;
+    const totLaba = totP - totMB;
     const totLabaClass = totLaba >= 0 ? "text-emerald-700" : "text-red-700";
     tfoot.innerHTML = `<tr class="bg-gray-900 font-bold text-white">
         <td class="px-4 py-3">TOTAL KESELURUHAN</td>
         <td class="px-4 py-3 text-center">${totT}</td>
         <td class="px-4 py-3 text-center">${totQ}</td>
         <td class="px-4 py-3 text-right">${fmt(totP)}</td>
-        <td class="px-4 py-3 text-right text-red-300">${fmt(totM)}</td>
+        <td class="px-4 py-3 text-right text-orange-300">${fmt(totMB)}</td>
+        <td class="px-4 py-3 text-right text-red-300">${fmt(totE)}</td>
         <td class="px-4 py-3 text-right ${totLabaClass}">${fmt(totLaba)}</td>
     </tr>`;
 }
@@ -529,13 +538,22 @@ $("btn-export").addEventListener("click", () => {
         csv += "Tanggal,Cabang,Produk,Stok Awal,Terjual,Sisa,Tidak Laku\n";
         fs.forEach(s => { csv+=`${s.tanggal},${s.cabang},${s.nama},${s.stokAwal||0},${s.terjual||0},${s.sisa||0},${(s.sisa||0)>0?(s.sisa||0):0}\n`; });
     } else if(currentTab==="rangkuman"){
-        csv += "Cabang,Transaksi,Qty,Penjualan,Modal,Laba\n";
+        csv += "Cabang,Transaksi,Qty,Penjualan,Modal Barang (HPP),Pengeluaran Bahan,Laba Penjualan\n";
         const ft = getFilteredTransaksi();
         const fm = getFilteredModal();
         const stats = {};
-        ft.forEach(t => { if(!stats[t.cabang]) stats[t.cabang]={p:0,m:0,q:0,t:0}; stats[t.cabang].p+=t.totalPenjualan||0; stats[t.cabang].q+=(t.items||[]).reduce((a,i)=>a+(i.qty||0),0); stats[t.cabang].t+=1; });
-        fm.forEach(m => { if(!stats[m.cabang]) stats[m.cabang]={p:0,m:0,q:0,t:0}; stats[m.cabang].m+=m.jumlah||0; });
-        Object.entries(stats).forEach(([k,v])=>{ csv+=`${k},${v.t},${v.q},${v.p},${v.m},${v.p-v.m}\n`; });
+        ft.forEach(t => {
+            if(!stats[t.cabang]) stats[t.cabang]={p:0,mb:0,e:0,q:0,t:0};
+            stats[t.cabang].p += t.totalPenjualan||0;
+            stats[t.cabang].mb += t.totalModal||0;
+            stats[t.cabang].q += (t.items||[]).reduce((a,i)=>a+(i.qty||0),0);
+            stats[t.cabang].t += 1;
+        });
+        fm.forEach(m => {
+            if(!stats[m.cabang]) stats[m.cabang]={p:0,mb:0,e:0,q:0,t:0};
+            stats[m.cabang].e += m.jumlah||0;
+        });
+        Object.entries(stats).forEach(([k,v])=>{ csv+=`${k},${v.t},${v.q},${v.p},${v.mb},${v.e},${v.p-v.mb}\n`; });
     } else {
         const fm = getFilteredModal();
         csv += "Tanggal,Cabang,Jenis,Jumlah,Keterangan\n";
@@ -680,7 +698,7 @@ $("filter-sampai").value = today;
     <!-- ===== TAB RANGKUMAN / REKAP ===== -->
     <div id="table-rangkuman" class="hidden space-y-6">
         <!-- Summary Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div class="summary-card bg-white border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
                 <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-coins text-5xl text-amber-600"></i></div>
                 <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Penjualan</p>
@@ -688,16 +706,22 @@ $("filter-sampai").value = today;
                 <p class="text-xs text-gray-400 mt-1">Omzet kotor periode ini</p>
             </div>
             <div class="summary-card bg-white border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-box text-5xl text-orange-600"></i></div>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Modal Barang Terjual</p>
+                <p id="sum-modal-barang" class="text-3xl font-black text-orange-600">Rp 0</p>
+                <p class="text-xs text-gray-400 mt-1">HPP dari modal per cup</p>
+            </div>
+            <div class="summary-card bg-white border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
                 <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-wallet text-5xl text-red-600"></i></div>
-                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Modal</p>
-                <p id="sum-modal" class="text-3xl font-black text-red-600">Rp 0</p>
-                <p class="text-xs text-gray-400 mt-1">Pengeluaran & modal periode ini</p>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Pengeluaran Bahan</p>
+                <p id="sum-pengeluaran" class="text-3xl font-black text-red-600">Rp 0</p>
+                <p class="text-xs text-gray-400 mt-1">Catatan pembelian bahan</p>
             </div>
             <div id="card-laba" class="summary-card bg-emerald-50 border border-emerald-200 rounded-2xl p-6 relative overflow-hidden">
                 <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-chart-line text-5xl text-emerald-600"></i></div>
-                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Laba Bersih</p>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Laba Penjualan</p>
                 <p id="sum-laba" class="text-3xl font-black text-emerald-600">Rp 0</p>
-                <p class="text-xs text-gray-400 mt-1">Penjualan - Modal</p>
+                <p class="text-xs text-gray-400 mt-1">Penjualan - HPP barang terjual</p>
             </div>
             <div class="summary-card bg-white border border-gray-200 rounded-2xl p-6 relative overflow-hidden">
                 <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-percentage text-5xl text-blue-600"></i></div>
@@ -777,8 +801,9 @@ $("filter-sampai").value = today;
                         <th class="px-4 py-3 text-center font-bold text-gray-700">Transaksi</th>
                         <th class="px-4 py-3 text-center font-bold text-gray-700">Qty</th>
                         <th class="px-4 py-3 text-right font-bold text-gray-700">Penjualan</th>
-                        <th class="px-4 py-3 text-right font-bold text-gray-700">Modal</th>
-                        <th class="px-4 py-3 text-right font-bold text-gray-700">Laba</th>
+                    <th class="px-4 py-3 text-right font-bold text-gray-700">Modal Barang (HPP)</th>
+                    <th class="px-4 py-3 text-right font-bold text-gray-700">Pengeluaran Bahan</th>
+                    <th class="px-4 py-3 text-right font-bold text-gray-700">Laba Penjualan</th>
                     </tr></thead>
                     <tbody id="tbody-rangkuman"></tbody>
                     <tfoot id="tfoot-rangkuman"></tfoot>
